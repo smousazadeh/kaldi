@@ -131,7 +131,6 @@ void NnetCctcSupervision::ComputeObjfAndDerivs(
     ctc::CctcCommonComputation computation(opts, cctc_trans_model, hmm,
                                            cu_weights, supervision,
                                            num_sequences, nnet_output_part);
-    tot_weight += supervision.num_frames * supervision.weight;
     BaseFloat this_num_part, this_den_part, this_weight;
     computation.Forward(&this_num_part, &this_den_part, &this_weight);
     if (this_num_part - this_num_part == 0.0 &&
