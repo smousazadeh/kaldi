@@ -30,7 +30,7 @@ void ComputeChainObjfAndDeriv(const ChainTrainingInfo &info,
                               const Supervision &supervision,
                               const CuMatrixBase<BaseFloat> &nnet_output,
                               BaseFloat *objf,
-                              BaseFloat *l2_term,                              
+                              BaseFloat *l2_term,
                               BaseFloat *weight,
                               CuMatrixBase<BaseFloat> *nnet_output_deriv) {
   BaseFloat num_logprob_weighted;
@@ -89,16 +89,6 @@ void ComputeChainObjfAndDeriv(const ChainTrainingInfo &info,
 
   ComputeL2Penalty(info, supervision.weight, nnet_output,
                    l2_term, nnet_output_deriv);
-  
-  if (info.l2_regularize == 0.0) {
-    *l2_term = 0.0;
-  } else {
-    // compute the l2 penalty term and its derivative
-    BaseFloat scale = supervision.weight * info.l2_regularize;
-    *l2_term = -0.5 * scale * TraceMatMat(nnet_output, nnet_output, kTrans);
-    if (nnet_output_deriv)
-      nnet_output_deriv->AddMat(-1.0 * scale, nnet_output);
-  }
 }
 
 
@@ -144,7 +134,7 @@ void ComputeL2Penalty(const ChainTrainingInfo &info,
     // Note the negation, we use 'scale' instead of '-1.0 * scale'.
     nnet_output_deriv->AddCols(scale, first_level_sums,
                                info.two_level_tree_map);
-    
+
   }
 }
 
@@ -186,7 +176,7 @@ static void GetReverseMap(std::vector<int32> &forward_map,
     if ((*reverse_map)[i].first == -1)
       KALDI_ERR << "Value " << i << " does not appear in --two-level-tree-map.";
   }
-  
+
 }
 
 ChainTrainingInfo::ChainTrainingInfo(
