@@ -137,7 +137,9 @@ EventMap *BuildTree(Questions &qopts,
  *                 triphone system.
  * @param leaf_map [out]  Will be set to be a mapping from the leaves of the
  *                 "big" tree to the leaves of the "little" tree, which you can
- *                 view as cluster centers.
+ *                 view as cluster centers.  Note, the mapping is contiguous,
+ *                 in that the second-level leaf numbers that map to the same
+ *                 first-level leaf numbers will always be contiguous ranges.
  * @return  Returns a pointer to an EventMap object that is the (big) tree.
 
 */
