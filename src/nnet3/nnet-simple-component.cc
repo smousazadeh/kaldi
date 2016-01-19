@@ -3305,7 +3305,7 @@ void ConvolutionComponent::InderivPatchesToInderiv(
   RearrangeIndexes(reverse_column_map, &rearranged_column_map);
   for (int32 p = 0; p < rearranged_column_map.size(); p++) {
     CuArray<int32> cu_cols(rearranged_column_map[p]);
-    in_deriv->AddCols(in_deriv_patches, cu_cols);
+    in_deriv->AddCols(1.0, in_deriv_patches, cu_cols);
   }
 }
 
@@ -3950,7 +3950,7 @@ void Convolutional1dComponent::Backprop(const std::string &debug_info,
     RearrangeIndexes(reversed_column_map, &rearranged_column_map);
     for (int32 p = 0; p < rearranged_column_map.size(); p++) {
       CuArray<int32> cu_cols(rearranged_column_map[p]);
-      in_deriv->AddCols(patches_deriv, cu_cols);
+      in_deriv->AddCols(1.0, patches_deriv, cu_cols);
     }
   }
 

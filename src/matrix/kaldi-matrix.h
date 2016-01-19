@@ -283,12 +283,13 @@ class MatrixBase {
   void CopyRows(const MatrixBase<Real> &src,
                 const MatrixIndexT *indices);
 
-  /// Add column indices[r] of src to column r.
+  /// Add alpha * column indices[r] of src to column r.
   /// As a special case, if indexes[i] == -1, skip column i
   /// indices.size() must equal this->NumCols(),
   /// all elements of "reorder" must be in [-1, src.NumCols()-1],
   /// and src.NumRows() must equal this.NumRows()
-  void AddCols(const MatrixBase<Real> &src,
+  void AddCols(Real alpha,
+               const MatrixBase<Real> &src,
                const MatrixIndexT *indices);
 
   /// Copies row r of this matrix from an array of floats at the location given

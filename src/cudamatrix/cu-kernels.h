@@ -130,8 +130,8 @@ inline void cuda_apply_ceiling(dim3 Gr, dim3 Bl, float* mat, float ceiling_val, 
 inline void cuda_copy_cols(dim3 Gr, dim3 Bl, float* dst, const float* src, const MatrixIndexT_cuda* reorder, MatrixDim dst_dim, int src_stride) {
   cudaF_copy_cols(Gr, Bl, dst, src, reorder, dst_dim, src_stride);
 }
-inline void cuda_add_cols(dim3 Gr, dim3 Bl, float* dst, const float* src, const MatrixIndexT_cuda* reorder, MatrixDim dst_dim, int src_stride) {
-  cudaF_add_cols(Gr, Bl, dst, src, reorder, dst_dim, src_stride);
+inline void cuda_add_cols(dim3 Gr, dim3 Bl, float alpha, float* dst, const float* src, const MatrixIndexT_cuda* reorder, MatrixDim dst_dim, int src_stride) {
+  cudaF_add_cols(Gr, Bl, alpha, dst, src, reorder, dst_dim, src_stride);
 }
 inline void cuda_copy_rows(dim3 Gr, dim3 Bl, float* dst, const float* src, const MatrixIndexT_cuda* reorder, MatrixDim dst_dim, int src_stride) {
   cudaF_copy_rows(Gr, Bl, dst, src, reorder, dst_dim, src_stride);
@@ -316,8 +316,8 @@ inline void cuda_apply_ceiling(dim3 Gr, dim3 Bl, double* mat, double ceiling_val
 inline void cuda_copy_cols(dim3 Gr, dim3 Bl, double* dst, const double* src, const MatrixIndexT_cuda* reorder, MatrixDim dst_dim, int src_stride) {
   cudaD_copy_cols(Gr, Bl, dst, src, reorder, dst_dim, src_stride);
 }
-inline void cuda_add_cols(dim3 Gr, dim3 Bl, double* dst, const double* src, const MatrixIndexT_cuda* reorder, MatrixDim dst_dim, int src_stride) {
-  cudaD_add_cols(Gr, Bl, dst, src, reorder, dst_dim, src_stride);
+inline void cuda_add_cols(dim3 Gr, dim3 Bl, double alpha, double* dst, const double* src, const MatrixIndexT_cuda* reorder, MatrixDim dst_dim, int src_stride) {
+  cudaD_add_cols(Gr, Bl, alpha, dst, src, reorder, dst_dim, src_stride);
 }
 inline void cuda_copy_rows(dim3 Gr, dim3 Bl, double* dst, const double* src, const MatrixIndexT_cuda* reorder, MatrixDim dst_dim, int src_stride) {
   cudaD_copy_rows(Gr, Bl, dst, src, reorder, dst_dim, src_stride);

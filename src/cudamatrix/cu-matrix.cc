@@ -2151,7 +2151,8 @@ void CuMatrixBase<Real>::CopyRows(const CuMatrixBase<Real> &src,
 }
 
 template<typename Real>
-void CuMatrixBase<Real>::AddCols(const CuMatrixBase<Real> &src,
+void CuMatrixBase<Real>::AddCols(BaseFloat alpha,
+                                 const CuMatrixBase<Real> &src,
                                  const CuArray<MatrixIndexT> &indices) {
 #if HAVE_CUDA == 1
   if (CuDevice::Instantiate().Enabled()) {
@@ -2161,14 +2162,14 @@ void CuMatrixBase<Real>::AddCols(const CuMatrixBase<Real> &src,
     dim3 dimGrid, dimBlock;
     GetBlockSizesForSimpleMatrixOperation(NumRows(), NumCols(),
                                           &dimGrid, &dimBlock);
-    cuda_add_cols(dimGrid, dimBlock, data_, src.Data(), indices.Data(),
+    cuda_add_cols(dimGrid, dimBlock, alpha, data_, src.Data(), indices.Data(),
                   Dim(), src.Stride());
     CU_SAFE_CALL(cudaGetLastError());
     CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
   } else
 #endif
   {
-    Mat().AddCols(src.Mat(), indices.Data());
+    Mat().AddCols(alpha, src.Mat(), indices.Data());
   }
 }
 

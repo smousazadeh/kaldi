@@ -2591,7 +2591,8 @@ void MatrixBase<Real>::CopyCols(const MatrixBase<Real> &src,
 
 
 template<typename Real>
-void MatrixBase<Real>::AddCols(const MatrixBase<Real> &src,
+void MatrixBase<Real>::AddCols(Real alpha,
+                               const MatrixBase<Real> &src,
                                const MatrixIndexT *indices) {
   KALDI_ASSERT(NumRows() == src.NumRows());
   MatrixIndexT num_rows = num_rows_, num_cols = num_cols_,
@@ -2603,14 +2604,25 @@ void MatrixBase<Real>::AddCols(const MatrixBase<Real> &src,
   for (MatrixIndexT i = 0; i < num_cols; i++)
     KALDI_ASSERT(indices[i] >= -1 && indices[i] < src_cols);
 #endif
-
   // For the sake of memory locality we do this row by row, rather
   // than doing it column-wise using cublas_Xcopy
-  for (MatrixIndexT r = 0; r < num_rows; r++, this_data += this_stride, src_data += src_stride) {
-    const MatrixIndexT *index_ptr = &(indices[0]);
-    for (MatrixIndexT c = 0; c < num_cols; c++, index_ptr++) {
-      if (*index_ptr >= 0)
-	this_data[c] += src_data[*index_ptr];
+  if (alpha == 1.0) {
+    for (MatrixIndexT r = 0; r < num_rows;
+         r++, this_data += this_stride, src_data += src_stride) {
+      const MatrixIndexT *index_ptr = &(indices[0]);
+      for (MatrixIndexT c = 0; c < num_cols; c++, index_ptr++) {
+        if (*index_ptr >= 0)
+          this_data[c] += src_data[*index_ptr];
+      }
+    }
+  } else {
+    for (MatrixIndexT r = 0; r < num_rows;
+         r++, this_data += this_stride, src_data += src_stride) {
+      const MatrixIndexT *index_ptr = &(indices[0]);
+      for (MatrixIndexT c = 0; c < num_cols; c++, index_ptr++) {
+        if (*index_ptr >= 0)
+          this_data[c] += alpha * src_data[*index_ptr];
+      }
     }
   }
 }
