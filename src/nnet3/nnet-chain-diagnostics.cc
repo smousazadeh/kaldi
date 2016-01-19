@@ -29,7 +29,7 @@ NnetChainComputeProb::NnetChainComputeProb(
     const fst::StdVectorFst &den_fst,
     const Nnet &nnet):
     nnet_config_(nnet_config),
-    chain_config_(chain_config),
+    chain_info_(chain_config),
     den_graph_(den_fst, nnet.OutputDim("output")),
     nnet_(nnet),
     compiler_(nnet, nnet_config_.optimize_config),
@@ -100,7 +100,7 @@ void NnetChainComputeProb::ProcessOutputs(const NnetChainExample &eg,
 
     BaseFloat tot_like, tot_l2_term, tot_weight;
     
-    ComputeChainObjfAndDeriv(chain_config_, den_graph_,
+    ComputeChainObjfAndDeriv(chain_info_, den_graph_,
                              sup.supervision, nnet_output,
                              &tot_like, &tot_l2_term, &tot_weight,
                              (nnet_config_.compute_deriv ?

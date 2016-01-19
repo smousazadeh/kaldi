@@ -49,7 +49,9 @@ class DenominatorComputation {
     Constructor.  'nnet_output' is the raw nnet output (which we'll treat as
     pseudo-log-likelihoods).
 
-    @param [in] opts  The options.
+
+    @param [in] info   A class containing variables derived from the options class
+                       (currently contains no relevant options).
     @param [in] graph  The HMM that we use for the denominator (like a decoding graph,
                        with pdf-ids on the transitions).
     @param [in] num_sequences The number of separate time sequences (all of the same length)
@@ -58,7 +60,7 @@ class DenominatorComputation {
                        The rows must be ordered as (first frame of all sequences)
                        (second frame of all sequences), etc.
   */
-  DenominatorComputation(const ChainTrainingOptions &opts,
+  DenominatorComputation(const ChainTrainingInfo &info,
                          const DenominatorGraph &den_graph,
                          int32 num_sequences,
                          const CuMatrixBase<BaseFloat> &nnet_output);
@@ -101,7 +103,7 @@ class DenominatorComputation {
   // Sets ok_ to false if a bad problem is detected.
   void BetaGeneralFrameDebug(int32 t);
 
-  const ChainTrainingOptions &opts_;
+  const ChainTrainingInfo &info_;
   const DenominatorGraph &den_graph_;
 
   // number of separate frame sequences

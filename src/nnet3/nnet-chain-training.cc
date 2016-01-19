@@ -27,6 +27,7 @@ NnetChainTrainer::NnetChainTrainer(const NnetChainTrainingOptions &opts,
                                    const fst::StdVectorFst &den_fst,
                                    Nnet *nnet):
     opts_(opts),
+    chain_training_info_(opts.chain_config),
     den_graph_(den_fst, nnet->OutputDim("output")),
     nnet_(nnet),
     compiler_(*nnet, opts_.nnet_config.optimize_config),
@@ -110,7 +111,7 @@ void NnetChainTrainer::ProcessOutputs(const NnetChainExample &eg,
 
     BaseFloat tot_objf, tot_l2_term, tot_weight;
 
-    ComputeChainObjfAndDeriv(opts_.chain_config, den_graph_,
+    ComputeChainObjfAndDeriv(chain_training_info_, den_graph_,
                              sup.supervision, nnet_output,
                              &tot_objf, &tot_l2_term, &tot_weight,
                              &nnet_output_deriv);

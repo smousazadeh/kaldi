@@ -25,6 +25,7 @@ frame_subsampling_factor=1
 leftmost_questions_truncate=10
 tree_stats_opts=
 cluster_phones_opts=
+leaves_per_group=
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -33,12 +34,16 @@ echo "$0 $@"  # Print the command line for logging
 . parse_options.sh || exit 1;
 
 if [ $# != 5 ]; then
-  echo "Usage: steps/train_sat.sh <#leaves> <data> <lang> <ali-dir> <exp-dir>"
-  echo " e.g.: steps/train_sat.sh 2500 15000 data/train_si84 data/lang exp/tri2b_ali_si84 exp/tri3b"
+  echo "Usage: $0 <#leaves> <data> <lang> <ali-dir> <exp-dir>"
+  echo " e.g.: $0 15000 data/train_si84 data/lang exp/tri2b_ali_si84 exp/tri3b"
   echo "Main options (for others, see top of script file)"
   echo "  --cmd (utils/run.pl|utils/queue.pl <queue opts>) # how to run jobs."
   echo "  --config <config-file>                           # config containing options"
   echo "  --stage <stage>                                  # stage to do partial re-run from."
+  echo "  --leaves-per-group <leaves-per-group>            # This option causes the program to build a two-level"
+  echo "                                                   # tree with first-level tree size equal to"
+  echo "                                                   # #leaves / leaves-per-group.  Affects l2 regularization"
+  echo "                                                   # in chain model training."
   exit 1;
 fi
 
@@ -148,10 +153,19 @@ if [ $stage -le -3 ] && $train_tree; then
   fi
 
   echo "$0: Building the tree"
-  $cmd $dir/log/build_tree.log \
-    build-tree $context_opts --verbose=1 --max-leaves=$numleaves \
+  if [ -z "$leaves_per_group" ]; then
+    $cmd $dir/log/build_tree.log \
+      build-tree $context_opts --verbose=1 --max-leaves=$numleaves \
     --cluster-thresh=$cluster_thresh $dir/treeacc $lang/phones/roots.int \
     $dir/questions.qst $lang/topo $dir/tree || exit 1;
+  else
+    num_leaves_first_level=$[$numleaves/$leaves_per_group] || exit 1
+    $cmd $dir/log/build_tree.log \
+      build-tree-two-level $context_opts --verbose=1 \
+      --max-leaves-first=$num_leaves_first_level --max-leaves-second=$numleaves \
+      --cluster-thresh=$cluster_thresh $dir/treeacc $lang/phones/roots.int \
+     $dir/questions.qst $lang/topo $dir/tree $dir/tree.map || exit 1;
+  fi
 fi
 
 if [ $stage -le -2 ]; then

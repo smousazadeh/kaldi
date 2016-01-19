@@ -25,11 +25,11 @@ namespace kaldi {
 namespace chain {
 
 DenominatorComputation::DenominatorComputation(
-    const ChainTrainingOptions &opts,
+    const ChainTrainingInfo &info,
     const DenominatorGraph &den_graph,
     int32 num_sequences,
     const CuMatrixBase<BaseFloat> &nnet_output):
-    opts_(opts),
+    info_(info),
     den_graph_(den_graph),
     num_sequences_(num_sequences),
     frames_per_sequence_(nnet_output.NumRows() / num_sequences_),

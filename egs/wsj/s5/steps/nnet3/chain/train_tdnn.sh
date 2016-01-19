@@ -162,6 +162,17 @@ mkdir -p $dir/log
 echo $nj > $dir/num_jobs
 cp $treedir/tree $dir
 
+# this tree.map stuff relates to the two-level tree (activated by giving the
+# --leaves-per-group option to build_tree.sh), which affects the l2
+# regularization.
+if [ -f $treedir/tree.map ] && [ "$l2_regularize" != 0.0 ]; then
+  cp $treedir/tree.map $dir
+  tree_map_opt="--two-level-tree-map=$treedir/tree.map"
+else
+  tree_map_opt=
+  rm $dir/tree.map 2>/dev/null
+fi
+
 
 # First work out the feature and iVector dimension, needed for tdnn config creation.
 case $feat_type in
@@ -413,7 +424,6 @@ deriv_time_opts=
 [ ! -z "$right_deriv_truncate" ] && \
   deriv_time_opts="$deriv_time_opts --optimization.max-deriv-time=$((frames_per_eg - right_deriv_truncate))"
 
-
 while [ $x -lt $num_iters ]; do
   [ $x -eq $exit_stage ] && echo "$0: Exiting early due to --exit-stage $exit_stage" && exit 0;
 
@@ -430,11 +440,11 @@ while [ $x -lt $num_iters ]; do
     # Set off jobs doing some diagnostics, in the background.
     # Use the egs dir from the previous iteration for the diagnostics
     $cmd $dir/log/compute_prob_valid.$x.log \
-      nnet3-chain-compute-prob --l2-regularize=$l2_regularize \
+      nnet3-chain-compute-prob --l2-regularize=$l2_regularize $tree_map_opt \
           "nnet3-am-copy --raw=true $dir/$x.mdl -|" $dir/den.fst \
           "ark:nnet3-chain-merge-egs ark:$egs_dir/valid_diagnostic.cegs ark:- |" &
     $cmd $dir/log/compute_prob_train.$x.log \
-      nnet3-chain-compute-prob --l2-regularize=$l2_regularize \
+      nnet3-chain-compute-prob --l2-regularize=$l2_regularize $tree_map_opt \
           "nnet3-am-copy --raw=true $dir/$x.mdl -|" $dir/den.fst \
           "ark:nnet3-chain-merge-egs ark:$egs_dir/train_diagnostic.cegs ark:- |" &
 
@@ -492,7 +502,7 @@ while [ $x -lt $num_iters ]; do
 
         $cmd $train_queue_opt $dir/log/train.$x.$n.log \
           nnet3-chain-train --apply-deriv-weights=$apply_deriv_weights \
-             --l2-regularize=$l2_regularize \
+             --l2-regularize=$l2_regularize $tree_map_opt \
               $parallel_train_opts $deriv_time_opts \
              --max-param-change=$this_max_param_change \
             --print-interval=10 "$mdl" $dir/den.fst \
@@ -560,7 +570,7 @@ if [ $stage -le $num_iters ]; then
   # num-threads to 8 to speed it up (this isn't ideal...)
 
   $cmd $combine_queue_opt $dir/log/combine.log \
-    nnet3-chain-combine --num-iters=40  --l2-regularize=$l2_regularize \
+    nnet3-chain-combine --num-iters=40  --l2-regularize=$l2_regularize $tree_map_opt \
        --enforce-sum-to-one=true --enforce-positive-weights=true \
        --verbose=3 $dir/den.fst "${nnets_list[@]}" "ark:nnet3-chain-merge-egs --minibatch-size=$minibatch_size ark:$egs_dir/combine.cegs ark:-|" \
        "|nnet3-am-copy --set-raw-nnet=- $dir/$first_model_combine.mdl $dir/final.mdl" || exit 1;
@@ -570,11 +580,11 @@ if [ $stage -le $num_iters ]; then
   # the same subset we used for the previous compute_probs, as the
   # different subsets will lead to different probs.
   $cmd $dir/log/compute_prob_valid.final.log \
-    nnet3-chain-compute-prob --l2-regularize=$l2_regularize \
+    nnet3-chain-compute-prob --l2-regularize=$l2_regularize $tree_map_opt \
            "nnet3-am-copy --raw=true $dir/final.mdl - |" $dir/den.fst \
     "ark:nnet3-chain-merge-egs ark:$egs_dir/valid_diagnostic.cegs ark:- |" &
   $cmd $dir/log/compute_prob_train.final.log \
-    nnet3-chain-compute-prob --l2-regularize=$l2_regularize \
+    nnet3-chain-compute-prob --l2-regularize=$l2_regularize $tree_map_opt \
       "nnet3-am-copy --raw=true $dir/final.mdl - |" $dir/den.fst \
     "ark:nnet3-chain-merge-egs ark:$egs_dir/train_diagnostic.cegs ark:- |" &
 fi

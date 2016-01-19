@@ -236,6 +236,94 @@ void TestSupervisionFrames(const Supervision &supervision) {
 }
 
 
+void ComputeL2PenaltyTest() {
+  int32 num_rows = RandInt(1, 100);
+  int32 num_first_level_pdfs = RandInt(10, 20);
+  int32 num_second_level_pdfs;
+
+  // the start and end of each range in the 1st-level tree... dim is
+  // num_first_level_pdfs + 1.
+  std::vector<int32> first_level_starts(num_first_level_pdfs + 1);
+  first_level_starts[0] = 0;
+  std::vector<int32> two_level_tree_map;
+  for (int32 i = 0; i < num_first_level_pdfs; i++) {
+    int32 n = RandInt(1, 20); // number of second level pdfs for this 1st level pdf.
+    int32 cur_index = first_level_starts[i],
+        next_index = cur_index + n;
+    first_level_starts[i+1] = next_index;
+    for (int32 j = cur_index; j < next_index; j++)
+      two_level_tree_map.push_back(i);
+  }
+  num_second_level_pdfs = first_level_starts.back();
+
+  // we need the map as an rxfilename.
+  std::ostringstream stream;
+  stream << "echo ";
+  WriteIntegerVector(stream, false, two_level_tree_map);
+  stream << "|";
+
+  ChainTrainingOptions opts;
+  opts.l2_regularize = 0.333 * RandInt(0, 10);
+  BaseFloat supervision_weight = 0.5 * RandInt(1, 3);
+  bool use_two_level_tree = (RandInt(0, 1) == 0);
+  bool compute_derivative = (RandInt(0, 1) == 0);
+  if (use_two_level_tree)
+    opts.two_level_tree_map_str = stream.str();
+
+  ChainTrainingInfo info(opts);
+      
+  CuMatrix<BaseFloat> nnet_output(num_rows, num_second_level_pdfs),
+      nnet_output_deriv(num_rows, num_second_level_pdfs);
+  nnet_output.SetRandn();
+  BaseFloat l2_term, l2_term_check;
+  
+  ComputeL2Penalty(info, supervision_weight, nnet_output, &l2_term,
+                   (compute_derivative ? &nnet_output_deriv : NULL));
+
+  if (!use_two_level_tree) {
+    l2_term_check = -0.5 * opts.l2_regularize * supervision_weight *
+        TraceMatMat(nnet_output, nnet_output, kTrans);
+  } else {
+    CuMatrix<BaseFloat> nnet_output_copy(nnet_output);
+    l2_term_check = 0.0;
+    for (int32 i = 0; i < num_first_level_pdfs; i++) {
+      int32 start = first_level_starts[i], end = first_level_starts[i+1],
+          n = end - start;
+      CuSubMatrix<BaseFloat> nnet_output_part(nnet_output_copy, 0, num_rows,
+                                              start, n);
+      CuVector<BaseFloat> avg(num_rows);
+      avg.AddColSumMat(1.0 / n, nnet_output_part, 0.0);
+      nnet_output_part.AddVecToCols(-1.0, avg);
+      l2_term_check += -0.5 * opts.l2_regularize * supervision_weight *
+          (VecVec(avg, avg) + TraceMatMat(nnet_output_part, nnet_output_part,
+                                          kTrans));
+    }
+  }
+  KALDI_ASSERT(ApproxEqual(l2_term_check, l2_term));
+
+  if (compute_derivative) {
+    // Check that the derivative is accurate;
+    CuMatrix<BaseFloat> random_step(num_rows, num_second_level_pdfs);
+    random_step.SetRandn();
+    random_step.AddMat(0.25, nnet_output_deriv);  // add some of the derivative to make
+    // sure the random step is not close to orthogonal to the derivative.
+    BaseFloat delta = 1.0e-04;
+    random_step.Scale(delta);
+    BaseFloat l2_term_change_predicted = TraceMatMat(random_step,
+                                                     nnet_output_deriv,
+                                                     kTrans);
+    nnet_output.AddMat(1.0, random_step);
+
+    BaseFloat l2_term_modified;
+    ComputeL2Penalty(info, supervision_weight, nnet_output, &l2_term_modified,
+                     NULL);
+    BaseFloat l2_term_change_observed = l2_term_modified - l2_term;
+    KALDI_ASSERT(ApproxEqual(l2_term_change_predicted,
+                             l2_term_change_observed,  0.1));
+  }
+}
+
+
 void ChainTrainingTest(const DenominatorGraph &den_graph,
                        const Supervision &supervision) {
   int32 num_sequences = supervision.num_sequences,
@@ -626,8 +714,11 @@ int main() {
     else
       CuDevice::Instantiate().SelectGpuId("yes");
 #endif
+    for (int32 i = 0; i < 20; i++) {
+      kaldi::chain::ComputeL2PenaltyTest();
+    }
     for (int32 i = 0; i < 5; i++) {
-      kaldi::chain::ChainSupervisionTest();
+      kaldi::chain::ChainSupervisionTest();      
       kaldi::chain::BreadthFirstTest();
     }
     kaldi::chain::TestRanges();

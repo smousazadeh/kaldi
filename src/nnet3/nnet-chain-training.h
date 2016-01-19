@@ -70,6 +70,7 @@ class NnetChainTrainer {
                       NnetComputer *computer);
 
   const NnetChainTrainingOptions opts_;
+  chain::ChainTrainingInfo chain_training_info_;
 
   chain::DenominatorGraph den_graph_;
   Nnet *nnet_;

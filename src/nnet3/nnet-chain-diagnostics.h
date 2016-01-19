@@ -77,7 +77,7 @@ class NnetChainComputeProb {
                       NnetComputer *computer);
 
   NnetComputeProbOptions nnet_config_;
-  chain::ChainTrainingOptions chain_config_;
+  chain::ChainTrainingInfo chain_info_;
   chain::DenominatorGraph den_graph_;
   const Nnet &nnet_;
   CachingOptimizingCompiler compiler_;
