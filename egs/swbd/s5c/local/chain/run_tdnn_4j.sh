@@ -1,42 +1,40 @@
 #!/bin/bash
 
-# _4g is as _4c, but reducing the --jesus-hidden-dim further from 7500 to 4000.
-# Strangely, the trend from 4a->4a does not continue: instead of continuing to get worse,
-# the train and valid probs both get better.
-#                      4a     4c      4g
-#  Final train prob: -0.0879  -0.08820  -0.08784
-#  Final valid prob: -0.1214  -0.1241   -0.1204
-# However, the WERs are worse on average (despite being better on train_dev with four-gram), see below.
-#  Both the 4c and 4g runs seem to have the property (not shared by the 4a run) that their
-#  post-jesus3 ReLU layer has quite a lot of very unsaturated neurons: 10th percentile <0.5% saturation, and 20th percentile
-# around 20% saturation (all measured at iter 200).  In 4a, the (10th,20th) percentiles have (18%,26%) saturation.
+# _4j is as _4i, but increasing the jesus-forward-input-dim from 400 to 500,
+# which thanks to the regularization I imagine will now be helpful (although
+# previously it was not).  WER change is -0.1,-0.3,+0.3,+0.2.  So not really
+# consistent.
+#./show_wer.sh 4j
+#%WER 16.73 [ 8234 / 49204, 922 ins, 2284 del, 5028 sub ] exp/chain/tdnn_4j_sp/decode_train_dev_sw1_tg/wer_10_0.0
+#%WER 15.39 [ 7572 / 49204, 901 ins, 2157 del, 4514 sub ] exp/chain/tdnn_4j_sp/decode_train_dev_sw1_fsh_fg/wer_10_0.0
+#%WER 18.7 | 4459 42989 | 83.3 11.0 5.7 2.0 18.7 56.5 | exp/chain/tdnn_4j_sp/decode_eval2000_sw1_tg/score_10_0.0/eval2000_hires.ctm.filt.sys
+#%WER 16.8 | 4459 42989 | 85.0 9.7 5.3 1.8 16.8 53.4 | exp/chain/tdnn_4j_sp/decode_eval2000_sw1_fsh_fg/score_10_0.0/eval2000_hires.ctm.filt.sys
 
-#./show_wer.sh 4g
-#%WER 17.79 [ 8754 / 49204, 981 ins, 2364 del, 5409 sub ] exp/chain/tdnn_4g_sp/decode_train_dev_sw1_tg/wer_11_0.0
-#%WER 16.51 [ 8126 / 49204, 898 ins, 2448 del, 4780 sub ] exp/chain/tdnn_4g_sp/decode_train_dev_sw1_fsh_fg/wer_12_0.0
-#%WER 20.0 | 4459 42989 | 82.4 11.9 5.7 2.4 20.0 57.5 | exp/chain/tdnn_4g_sp/decode_eval2000_sw1_tg/score_10_0.0/eval2000_hires.ctm.filt.sys
-#%WER 18.0 | 4459 42989 | 84.0 10.3 5.7 2.0 18.0 54.9 | exp/chain/tdnn_4g_sp/decode_eval2000_sw1_fsh_fg/score_11_0.0/eval2000_hires.ctm.filt.sys
-#a03:s5c: ./show_wer.sh 4c
-#%WER 17.63 [ 8673 / 49204, 956 ins, 2334 del, 5383 sub ] exp/chain/tdnn_4c_sp/decode_train_dev_sw1_tg/wer_11_0.0
-#%WER 16.61 [ 8175 / 49204, 964 ins, 2272 del, 4939 sub ] exp/chain/tdnn_4c_sp/decode_train_dev_sw1_fsh_fg/wer_11_0.0
-#%WER 19.7 | 4459 42989 | 82.6 11.8 5.6 2.3 19.7 57.4 | exp/chain/tdnn_4c_sp/decode_eval2000_sw1_tg/score_10_0.0/eval2000_hires.ctm.filt.sys
-#%WER 17.8 | 4459 42989 | 84.2 10.6 5.2 2.0 17.8 54.4 | exp/chain/tdnn_4c_sp/decode_eval2000_sw1_fsh_fg/score_10_1.0/eval2000_hires.ctm.filt.sys
+# _4i is as _4f, but reversing the 4c->4a change, which was not helpful,
+# i.e. making the first splice-indexes wider again.
 
+# _4f is as _4e, but halving the regularization from 0.0001 to 0.00005.
+
+# It's even better than 4e, by about 0.3% abs.
+#                        4c    4e      4f
+#  Final valid prob:   -0.1241 -0.1267  -0.1230
+#  Final train prob:   -0.08820 -0.1149 -0.1058
+
+# ./show_wer.sh 4f
+# %WER 16.83 [ 8282 / 49204, 870 ins, 2354 del, 5058 sub ] exp/chain/tdnn_4f_sp/decode_train_dev_sw1_tg/wer_10_0.0
+# %WER 15.73 [ 7739 / 49204, 864 ins, 2256 del, 4619 sub ] exp/chain/tdnn_4f_sp/decode_train_dev_sw1_fsh_fg/wer_10_0.0
+# %WER 18.4 | 4459 42989 | 83.5 11.0 5.5 2.0 18.4 56.2 | exp/chain/tdnn_4f_sp/decode_eval2000_sw1_tg/score_9_0.0/eval2000_hires.ctm.filt.sys
+# %WER 16.6 | 4459 42989 | 85.2 9.7 5.1 1.8 16.6 53.4 | exp/chain/tdnn_4f_sp/decode_eval2000_sw1_fsh_fg/score_9_0.0/eval2000_hires.ctm.filt.sys
+# a03:s5c: ./show_wer.sh 4e
+# %WER 17.09 [ 8407 / 49204, 923 ins, 2242 del, 5242 sub ] exp/chain/tdnn_4e_sp/decode_train_dev_sw1_tg/wer_9_0.0
+# %WER 15.91 [ 7829 / 49204, 932 ins, 2141 del, 4756 sub ] exp/chain/tdnn_4e_sp/decode_train_dev_sw1_fsh_fg/wer_9_0.0
+# %WER 18.5 | 4459 42989 | 83.5 10.8 5.7 2.0 18.5 56.0 | exp/chain/tdnn_4e_sp/decode_eval2000_sw1_tg/score_9_0.0/eval2000_hires.ctm.filt.sys
+# %WER 16.9 | 4459 42989 | 84.9 9.8 5.4 1.8 16.9 53.9 | exp/chain/tdnn_4e_sp/decode_eval2000_sw1_fsh_fg/score_9_0.0/eval2000_hires.ctm.filt.sys
+
+
+# _4e is as _4c, but adding the option --l2-regularize 0.0001.
 
 # _4c is as _4a, but using half the --jesus-hidden-dim: 7500 versus 15000.
-# Yay-- WER is slightly better or the same.  Final train-prob is worse
-# -0.0879 -> -0.0882, and valid-prob worse -0.1213 -> -0.1241.
-
-# %WER 17.63 [ 8673 / 49204, 956 ins, 2334 del, 5383 sub ] exp/chain/tdnn_4c_sp/decode_train_dev_sw1_tg/wer_11_0.0
-# %WER 16.61 [ 8175 / 49204, 964 ins, 2272 del, 4939 sub ] exp/chain/tdnn_4c_sp/decode_train_dev_sw1_fsh_fg/wer_11_0.0
-# %WER 19.7 | 4459 42989 | 82.6 11.8 5.6 2.3 19.7 57.4 | exp/chain/tdnn_4c_sp/decode_eval2000_sw1_tg/score_10_0.0/eval2000_hires.ctm.filt.sys
-# %WER 17.8 | 4459 42989 | 84.2 10.6 5.2 2.0 17.8 54.4 | exp/chain/tdnn_4c_sp/decode_eval2000_sw1_fsh_fg/score_10_1.0/eval2000_hires.ctm.filt.sys
-# a03:s5c: ./show_wer.sh 4a
-# %WER 17.88 [ 8800 / 49204, 1017 ins, 2233 del, 5550 sub ] exp/chain/tdnn_4a_sp/decode_train_dev_sw1_tg/wer_11_0.0
-# %WER 16.73 [ 8231 / 49204, 898 ins, 2397 del, 4936 sub ] exp/chain/tdnn_4a_sp/decode_train_dev_sw1_fsh_fg/wer_12_0.0
-# %WER 19.7 | 4459 42989 | 82.5 12.0 5.5 2.3 19.7 57.6 | exp/chain/tdnn_4a_sp/decode_eval2000_sw1_tg/score_10_0.5/eval2000_hires.ctm.filt.sys
-# %WER 17.8 | 4459 42989 | 84.2 10.3 5.5 2.0 17.8 55.1 | exp/chain/tdnn_4a_sp/decode_eval2000_sw1_fsh_fg/score_11_0.0/eval2000_hires.ctm.filt.sys
-
 
 # _4a is as _3s, but using narrower splice-indexes in the first layer.
 
@@ -238,7 +236,7 @@ stage=12
 train_stage=-10
 get_egs_stage=-10
 speed_perturb=true
-dir=exp/chain/tdnn_4g # Note: _sp will get added to this if $speed_perturb == true.
+dir=exp/chain/tdnn_4j # Note: _sp will get added to this if $speed_perturb == true.
 
 # training options
 num_epochs=4
@@ -330,9 +328,10 @@ if [ $stage -le 12 ]; then
  touch $dir/egs/.nodelete # keep egs around when that run dies.
 
  steps/nnet3/chain/train_tdnn.sh --stage $train_stage \
+    --l2-regularize 0.00005 \
     --egs-dir exp/chain/tdnn_2y_sp/egs \
-    --jesus-opts "--jesus-forward-input-dim 400  --jesus-forward-output-dim 1500 --jesus-hidden-dim 4000 --jesus-stddev-scale 0.2 --final-layer-learning-rate-factor 0.25" \
-    --splice-indexes "-1,0,1 -1,0,1,2 -3,0,3 -6,-3,0,3 -6,-3,0,3" \
+    --jesus-opts "--jesus-forward-input-dim 500  --jesus-forward-output-dim 1500 --jesus-hidden-dim 7500 --jesus-stddev-scale 0.2 --final-layer-learning-rate-factor 0.25" \
+    --splice-indexes "-2,-1,0,1,2 -1,0,1,2 -3,0,3 -6,-3,0,3 -6,-3,0,3" \
     --apply-deriv-weights false \
     --frames-per-iter 1200000 \
     --lm-opts "--num-extra-lm-states=2000" \

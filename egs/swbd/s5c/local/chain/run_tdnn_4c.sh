@@ -3,6 +3,7 @@
 # _4c is as _4a, but using half the --jesus-hidden-dim: 7500 versus 15000.
 # Yay-- WER is slightly better or the same.  Final train-prob is worse
 # -0.0879 -> -0.0882, and valid-prob worse -0.1213 -> -0.1241.
+# See 4g for more comparison and discussion.
 
 # %WER 17.63 [ 8673 / 49204, 956 ins, 2334 del, 5383 sub ] exp/chain/tdnn_4c_sp/decode_train_dev_sw1_tg/wer_11_0.0
 # %WER 16.61 [ 8175 / 49204, 964 ins, 2272 del, 4939 sub ] exp/chain/tdnn_4c_sp/decode_train_dev_sw1_fsh_fg/wer_11_0.0
