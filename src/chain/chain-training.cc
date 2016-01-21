@@ -126,15 +126,15 @@ void ComputeL2Penalty(const ChainTrainingInfo &info,
   // We deal with the factor of (n_i - 1)/n_i^2 by first scaling each
   // column by its square root.
   first_level_sums.MulColsVec(info.sqrt_scales);
-  *l2_term += 0.5 * scale * TraceMatMat(first_level_sums, first_level_sums,
-                                        kTrans);
+  *l2_term += 0.5 * info.two_level_tree_scale * scale *
+      TraceMatMat(first_level_sums, first_level_sums, kTrans);
   if (nnet_output_deriv) {
     // Apply the same scale again for the sake of the derivative computation.
     first_level_sums.MulColsVec(info.sqrt_scales);
     // Note the negation, we use 'scale' instead of '-1.0 * scale'.
-    nnet_output_deriv->AddCols(scale, first_level_sums,
+    nnet_output_deriv->AddCols(info.two_level_tree_scale * scale,
+                               first_level_sums,
                                info.two_level_tree_map);
-
   }
 }
 
@@ -181,7 +181,8 @@ static void GetReverseMap(std::vector<int32> &forward_map,
 
 ChainTrainingInfo::ChainTrainingInfo(
     const ChainTrainingOptions &info):
-    l2_regularize(info.l2_regularize) {
+    l2_regularize(info.l2_regularize),
+    two_level_tree_scale(info.two_level_tree_scale) {
   if (!info.two_level_tree_map_str.empty()) {
     bool binary;
     Input input(info.two_level_tree_map_str, &binary);

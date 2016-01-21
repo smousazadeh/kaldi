@@ -45,8 +45,9 @@ struct ChainTrainingOptions {
   // so it's additive across the dimensions).
   BaseFloat l2_regularize;
   std::string two_level_tree_map_str;
+  BaseFloat two_level_tree_scale;
 
-  ChainTrainingOptions(): l2_regularize(0.0) { }
+  ChainTrainingOptions(): l2_regularize(0.0), two_level_tree_scale(1.0) { }
 
   void Register(OptionsItf *opts) {
     opts->Register("l2-regularize", &l2_regularize, "l2 regularization "
@@ -56,6 +57,9 @@ struct ChainTrainingOptions {
                    "Filename for map from second-level to first tree if "
                    "using two-level tree (affects how l2 regularization is "
                    "applied)");
+    opts->Register("two-level-tree-scale", &two_level_tree_scale,
+                   "Scaling factor on the two-level-tree-map modification, where "
+                   "1 gives you full application and 0 gives non at all.");
   }
 };
 
@@ -67,15 +71,16 @@ struct ChainTrainingOptions {
 */
 struct ChainTrainingInfo {
   BaseFloat l2_regularize;
+  BaseFloat two_level_tree_scale;
 
   // If the two-level-tree-map option is not given, the arrays below will
   // all be empty.
-  
+
   // If --two-level-tree-map option is given, maps from 2nd-level to 1st-level
   // tree (else empty).  Dimension is number of pdfs in 2nd-level tree (i.e. the
   // tree the model was built with).
   CuArray<int32> two_level_tree_map;
-  
+
   // If the --two-level-tree-map option is given, this contains a reverse map
   // from 1st-level tree index to (start, end) of ranges of 2nd-level tree
   // indexes. (the two-level tree building code ensures that the indexes form
@@ -89,10 +94,10 @@ struct ChainTrainingInfo {
   // sqrt_scales(i) = sqrt( (n_i-1) / n_i^2 ), where n_i is the number of 2nd-level
   // tree leaves that map to leaf i of the first-level tree.
   CuVector<BaseFloat> sqrt_scales;
-  
+
 
   explicit ChainTrainingInfo(const ChainTrainingOptions &opts);
-  
+
 };
 
 
