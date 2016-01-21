@@ -163,7 +163,7 @@ if [ $stage -le -3 ] && $train_tree; then
     $cmd $dir/log/build_tree.log \
       build-tree-two-level $context_opts --verbose=1 \
       --max-leaves-first=$num_leaves_first_level --max-leaves-second=$numleaves \
-      --cluster-thresh=$cluster_thresh $dir/treeacc $lang/phones/roots.int \
+       $dir/treeacc $lang/phones/roots.int \
      $dir/questions.qst $lang/topo $dir/tree $dir/tree.map || exit 1;
   fi
 fi

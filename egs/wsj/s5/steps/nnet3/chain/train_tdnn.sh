@@ -26,12 +26,14 @@ final_effective_lrate=0.00002
 extra_left_context=0  # actually for recurrent setups.
 pnorm_input_dim=3000
 pnorm_output_dim=300
+convert_repeated_to_block_iter=-1
 relu_dim=  # you can use this to make it use ReLU's instead of p-norms.
 
 jesus_opts=  # opts to steps/nnet3/make_jesus_configs.py.
              # If nonempty, assumes you want to use the jesus nonlinearity,
              # and you should supply various options to that script in
              # this string.
+two_level_tree_scale=1.0
 rand_prune=4.0 # Relates to a speedup we do for LDA.
 minibatch_size=512  # This default is suitable for GPU-based training.
                     # Set it to 128 for multi-threaded CPU-based training.
@@ -167,7 +169,7 @@ cp $treedir/tree $dir
 # regularization.
 if [ -f $treedir/tree.map ] && [ "$l2_regularize" != 0.0 ]; then
   cp $treedir/tree.map $dir
-  tree_map_opt="--two-level-tree-map=$treedir/tree.map"
+  tree_map_opt="--two-level-tree-map=$treedir/tree.map --two-level-tree-scale=$two_level_tree_scale"
 else
   tree_map_opt=
   rm $dir/tree.map 2>/dev/null
@@ -469,7 +471,9 @@ while [ $x -lt $num_iters ]; do
     else
       do_average=true
       if [ $x -eq 0 ]; then do_average=false; fi # on iteration 0, pick the best, don't average.
-      mdl="nnet3-am-copy --raw=true --learning-rate=$this_learning_rate $dir/$x.mdl -|"
+      extra_opt=
+      [ $x -eq $convert_repeated_to_block_iter ] && extra_opt="--convert-repeated-to-block=true"
+      mdl="nnet3-am-copy --raw=true --learning-rate=$this_learning_rate $extra_opt $dir/$x.mdl -|"
     fi
     if $do_average; then
       this_minibatch_size=$minibatch_size
