@@ -12,8 +12,8 @@ include ../kaldi.mk
 
 TESTFILES = arpa-file-parser-test lm-lib-test
 
-OBJFILES = arpa-file-parser.o const-arpa-lm.o kaldi-lmtable.o kaldi-lm.o \
-	   kaldi-rnnlm.o mikolov-rnnlm-lib.o
+OBJFILES = arpa-file-parser.o arpa-lm-compiler.o const-arpa-lm.o \
+	   kaldi-lmtable.o kaldi-lm.o kaldi-rnnlm.o mikolov-rnnlm-lib.o
 
 TESTOUTPUTS = composed.fst output.fst output1.fst output2.fst
 
