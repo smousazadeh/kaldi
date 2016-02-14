@@ -270,17 +270,6 @@ template
 void Randomize(const CuMatrixBase<double> &src,
                const CuArray<int32> &copy_from_idx,
                CuMatrixBase<double> *tgt);
-/*
-template
-void ComputeXvectorObjfFromScores(const CuMatrixBase<float> &scores,
-                                  CuMatrixBase<float> *objf_terms,
-                                  CuMatrixBase<float> *objf_derivs);
-template
-void ComputeXvectorObjfFromScores(const CuMatrixBase<double> &scores,
-                                  CuMatrixBase<double> *objf_terms,
-                                  CuMatrixBase<double> *objf_derivs);
-*/
-
 
 
 } //namespace cu
