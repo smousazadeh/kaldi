@@ -166,7 +166,7 @@ bool TestXvectorComputeObjf() {
     KALDI_ASSERT(ApproxEqual(deriv_xvector_vec(i),
     deriv_xvector_vec_test(i), 0.001));
 
-  // Verif that the S derivates are the same.
+  // Verify that the S derivates are the same.
   for (int32 i = 0; i < deriv_S.Dim(); i++)
     KALDI_ASSERT(ApproxEqual(deriv_S(i), deriv_S_test(i), 0.001));
 
