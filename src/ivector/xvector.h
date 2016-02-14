@@ -55,8 +55,10 @@ namespace kaldi {
   (2, 4), etc, are from different classes.
   @param [out] deriv_xvector  If non-NULL, the derivative of the objective
   function with respect to the xvectors is written here.
-  @param [out] deriv_S_and_b  If non-NULL, the derivative of the objective
-  function with respect to the parameters S and b are written here.
+  @param [out] deriv_S  If non-NULL, the derivative of the objective
+  function with respect to the parameter S are written here.
+  @param [out] deriv_b  If other derivates are non-NULL the derivative of
+  the objective function with respect to the parameter b is written here.
   @param [out] tot_objf  The total objective function described above
   @param [out] tot_weight  The total normalizing factor for the objective
   function, equal to dvector_pairs.NumRows().
@@ -65,10 +67,10 @@ namespace kaldi {
     const CuSpMatrix<BaseFloat> &S,
     BaseFloat b,
     CuMatrixBase<BaseFloat> *deriv_xvector,
-    CuVector<BaseFloat> *deriv_S_and_b,
+    CuVector<BaseFloat> *deriv_S,
+    BaseFloat *deriv_b,
     BaseFloat *tot_objf,
     BaseFloat *tot_weight);
-
 }  // namespace kaldi
 
 #endif

@@ -206,10 +206,11 @@ void Copy(const CuMatrixBase<Real> &src, const CuArray<int32> &copy_from_indices
   }
 }
 
-template<typename Real>
-void ComputeXvectorObjfFromScores(const CuMatrixBase<Real> &scores,
-                                  CuMatrixBase<Real> *objf_terms,
-                                  CuMatrixBase<Real> *objf_derivs) {
+void ComputeXvectorObjfFromScores(const CuMatrixBase<BaseFloat> &scores,
+                                  CuMatrixBase<BaseFloat> *objf_terms,
+                                  CuMatrixBase<BaseFloat> *objf_derivs) {
+  KALDI_ASSERT(SameDim(*objf_terms, *objf_derivs)
+               && SameDim(*objf_terms, scores));
   #if HAVE_CUDA == 1
   if (CuDevice::Instantiate().Enabled()) {
     Timer tim;
@@ -226,8 +227,19 @@ void ComputeXvectorObjfFromScores(const CuMatrixBase<Real> &scores,
   } else
   #endif
   {
-    // TODO: Add the CPU version.
-    KALDI_LOG << "NOT USING CUDA";
+    int32 num_rows = scores.NumRows();
+    BaseFloat K = 1.0 / (num_rows - 2.0);
+    for (int32 i = 0; i < num_rows; i++) {
+      for (int32 j = i + 1; j < num_rows; j++) {
+        if (i + 1 == j && i % 2 == 0) {
+          (*objf_terms)(i, j) = log(1.0 + exp(-scores(i, j)));
+          (*objf_derivs)(i, j) = 1.0 / (1.0 + exp(scores(i, j)));
+        } else {
+          (*objf_terms)(i, j) = K * log(1.0 + exp(scores(i, j)));
+          (*objf_derivs)(i, j) = -K / (1.0 + exp(-scores(i, j)));
+        }
+      }
+    }
   }
 }
 
@@ -258,7 +270,7 @@ template
 void Randomize(const CuMatrixBase<double> &src,
                const CuArray<int32> &copy_from_idx,
                CuMatrixBase<double> *tgt);
-
+/*
 template
 void ComputeXvectorObjfFromScores(const CuMatrixBase<float> &scores,
                                   CuMatrixBase<float> *objf_terms,
@@ -267,6 +279,7 @@ template
 void ComputeXvectorObjfFromScores(const CuMatrixBase<double> &scores,
                                   CuMatrixBase<double> *objf_terms,
                                   CuMatrixBase<double> *objf_derivs);
+*/
 
 
 
