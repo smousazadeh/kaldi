@@ -16,12 +16,10 @@ import re, os, argparse, sys, math, warnings
 
 
 parser = argparse.ArgumentParser(description="Writes config files and variables "
-                                 "for TDNNs creation and training",
-                                 epilog="See steps/nnet3/train_tdnn.sh for example.");
+                                 "for TDNN with jesus nonlinearity",
+                                 epilog="See steps/nnet3/chain/train_tdnn.sh for example.");
 parser.add_argument("--splice-indexes", type=str,
-                    help="Splice[:recurrence] indexes at each hidden layer, e.g. '-3,-2,-1,0,1,2,3 -3,0:-3 -3,0:-3 -6,-3,0:-6,-3'. "
-                    "Note: recurrence indexes are optional, may not appear in 1st layer, and must be "
-                    "either all negative or all positive for any given layer.")
+                    help="Splice indexes at each hidden layer, e.g. '-3,-2,-1,0,1,2,3 -3,0:-3 -3,0:-3 -6,-3,0:-6,-3'. ")
 parser.add_argument("--feat-dim", type=int,
                     help="Raw feature dimension, e.g. 13")
 parser.add_argument("--ivector-dim", type=int,
@@ -60,10 +58,6 @@ parser.add_argument("--num-jesus-blocks", type=int,
 parser.add_argument("--jesus-stddev-scale", type=float,
                     help="Scaling factor on parameter stddev of Jesus layer (smaller->jesus layer learns faster)",
                     default=1.0)
-parser.add_argument("--clipping-threshold", type=float,
-                    help="clipping threshold used in ClipGradient components (only relevant if "
-                    "recurrence indexes are specified).  If clipping-threshold=0 no clipping is done",
-                    default=15)
 parser.add_argument("--num-targets", type=int,
                     help="number of network targets (e.g. num-pdf-ids/num-leaves)")
 parser.add_argument("config_dir",
@@ -243,7 +237,7 @@ for l in range(1, num_hidden_layers + 1):
     # the following summarizes the structure of the layers:  Here, the Jesus component includes ReLU at its input and output, and renormalize
     #   at its output after the ReLU.
     # layer1: splice + LDA-transform + affine + ReLU + renormalize
-    # layerX: splice + Jesus + affine + ReLU
+    # layerX: splice + Jesus + affine + post-jesus
 
     # Inside the jesus component is:
     #  [permute +] ReLU + repeated-affine + ReLU + repeated-affine
@@ -416,17 +410,6 @@ for l in range(1, num_hidden_layers + 1):
               format(l, args.jesus_forward_output_dim, cur_affine_output_dim), file=f)
         print('component-node name=jesus{0}-forward-output-affine component=forward-affine{0} input=post-jesus{0}'.format(
             l), file=f)
-        # for each recurrence delay, create an affine node followed by a
-        # clip-gradient node.  [if there are multiple recurrences in the same layer,
-        # each one gets its own affine projection.]
-
-        # The reason we set the param-stddev to 0 is out of concern that if we
-        # initialize to nonzero, this will encourage the corresponding inputs at
-        # the jesus layer to become small (to remove this random input), which
-        # in turn will make this component learn slowly (due to small
-        # derivatives).  we set the bias-mean to 0.001 so that the ReLUs on the
-        # input of the Jesus layer are in the part of the activation that has a
-        # nonzero derivative- otherwise with this setup it would never learn.
 
         cur_output = 'jesus{0}-forward-output-affine'.format(l)
 

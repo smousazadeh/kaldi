@@ -822,8 +822,10 @@ class FixedScaleComponent: public Component {
 
   void Init(const CuVectorBase<BaseFloat> &scales);
 
-  // The ConfigLine cfl contains only the option scales=<string>,
-  // where the string is the filename of a Kaldi-format matrix to read.
+  // The ConfigLine cfl will contain either theoption scales=<string>, where the
+  // string is the filename of a Kaldi-format matrix to read, or dim=d and
+  // scale=xx, where d is an integer >0 and xx is a floating-point value (all
+  // the scales will be set to the same value).
   virtual void InitFromConfig(ConfigLine *cfl);
 
   virtual int32 InputDim() const { return scales_.Dim(); }
@@ -1056,6 +1058,7 @@ class PermuteComponent: public Component {
 
 // PerElementScaleComponent scales each dimension of its input with a separate
 // trainable scale; it's like a linear component with a diagonal matrix.
+// See also FixedPerElementScaleComponent.
 class PerElementScaleComponent: public UpdatableComponent {
  public:
   virtual int32 InputDim() const { return scales_.Dim(); }

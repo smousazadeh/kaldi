@@ -2693,7 +2693,6 @@ void FixedScaleComponent::Init(const CuVectorBase<BaseFloat> &scales) {
   scales_ = scales;
 }
 
-
 void FixedScaleComponent::InitFromConfig(ConfigLine *cfl) {
   std::string filename;
   // Accepts "scales" config (for filename) or "dim" -> random init, for testing.
@@ -2706,12 +2705,14 @@ void FixedScaleComponent::InitFromConfig(ConfigLine *cfl) {
     Init(vec);
   } else {
     int32 dim;
-    if (!cfl->GetValue("dim", &dim) || cfl->HasUnusedValues())
+    BaseFloat scale;
+    if (!cfl->GetValue("dim", &dim) || !cfl->GetValue("scale", &scale)
+        || cfl->HasUnusedValues())
       KALDI_ERR << "Invalid initializer for layer of type "
                 << Type() << ": \"" << cfl->WholeLine() << "\"";
     KALDI_ASSERT(dim > 0);
     CuVector<BaseFloat> vec(dim);
-    vec.SetRandn();
+    vec.Set(scale);
     Init(vec);
   }
 }
