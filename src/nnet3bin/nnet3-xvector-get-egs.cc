@@ -21,8 +21,6 @@
 #include <sstream>
 
 #include "util/common-utils.h"
-#include "hmm/transition-model.h"
-#include "hmm/posterior.h"
 #include "nnet3/nnet-example.h"
 
 namespace kaldi {
