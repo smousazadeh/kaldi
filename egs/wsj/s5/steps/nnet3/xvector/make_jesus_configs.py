@@ -28,7 +28,7 @@ import re, os, argparse, sys, math, warnings
 
 parser = argparse.ArgumentParser(description="Writes config files and variables "
                                  "for TDNNs with jesus-layer nonlinearity for use in "
-                                 "training xvectors."
+                                 "training xvectors.",
                                  epilog="Typically called prior to steps/nnet3/xvector train_tdnn.sh; "
                                  "see egs/swbd/s5c/local/xvector/run.sh for example.");
 parser.add_argument("--splice-indexes", type=str,
@@ -67,19 +67,12 @@ parser.add_argument("--s-scale", type=float, default=0.05,
                     help="Scaling factor on output 's' (s is a symmetric matrix used for scoring); similar in purpose to --output-scale");
 parser.add_argument("--b-scale", type=float, default=0.01,
                     help="Scaling factor on output 'b' (b is a scalar offset used in scoring); similar in purpose to --output-scale")
-parser.add_argument("--final-hidden-dim", type=int,
-                    help="Final hidden layer dimension-- or if <0, the same as "
-                    "--jesus-input-dim", default=-1)
-
-parser.add_argument("config_dir",
-                    help="Directory to write config files and variables");
+parser.add_argument("config_out",
+                    help="Filename for the config file to be written to");
 
 print(' '.join(sys.argv))
 
 args = parser.parse_args()
-
-if not os.path.exists(args.config_dir):
-    os.makedirs(args.config_dir)
 
 ## Check arguments.
 if args.splice_indexes is None:
@@ -127,13 +120,13 @@ class StatisticsConfig:
         if m == None:
             sys.exit("Invalid splice-index or statistics-config string: " + config_string)
         self.output_stddev = (m.group(1) == '+stddev')
-        self.output_count = (m.group(1) == '+count')
+        self.output_count = (m.group(2) == '+count')
 
-        self.left_context = -int(m.group(2))
-        self.input_period = int(m.group(3))
-        self.stats_period = int(m.group(4))
-        self.right_context = int(m.group(5))
-        if not (self.left_context > 0 and self.right_context > 0 and
+        self.left_context = -int(m.group(3))
+        self.input_period = int(m.group(4))
+        self.stats_period = int(m.group(5))
+        self.right_context = int(m.group(6))
+        if not (self.left_context >= 0 and self.right_context >= 0 and
                 self.input_period > 0 and self.stats_period > 0 and
                 self.num_jesus_blocks > 0 and
                 self.left_context % self.stats_period == 0 and
@@ -213,11 +206,12 @@ try:
             except:
                 if len(splice_array) == 1:
                     sys.exit("First dimension of splicing array must not have averaging [yet]")
-                try:
-                    x = StatisticsConfig(s, 100, 100, 'foo')
-                except:
-                    sys.exit("The following element of the splicing array is not a valid specifier "
-                    "of statistics: " + s)
+                #try:
+                x = StatisticsConfig(s, 100, 100, 'foo')
+                # don't catch the exception, let it make the program die.
+                #except:
+                #    sys.exit("The following element of the splicing array is not a valid specifier "
+                #    "of statistics: " + s)
 
 except ValueError as e:
     sys.exit("invalid --splice-indexes argument " + args.splice_indexes + " " + str(e))
@@ -225,8 +219,8 @@ except ValueError as e:
 num_hidden_layers = len(splice_array)
 
 
-# all the remaining layers after the inputs in 'init.config' are added in one go.
-f = open(args.config_dir + "/layers.config", "w")
+# we just write a single config file.
+f = open(args.config_out, "w")
 
 print('input-node name=input dim=' + str(args.feat_dim), file=f)
 cur_output = 'input'
@@ -264,7 +258,7 @@ for l in range(1, num_hidden_layers + 1):
             # it's not an integer offset, so assume it specifies the
             # statistics-extraction.
             stats = StatisticsConfig(s, cur_affine_output_dim,
-                                     args.num_jeus_blocks, cur_output)
+                                     args.num_jesus_blocks, cur_output)
             stats.WriteConfigs(f)
             splices.append(stats.Descriptor())
             spliced_dims.extend(stats.OutputDims())
@@ -273,7 +267,19 @@ for l in range(1, num_hidden_layers + 1):
     cur_input = 'Append({0})'.format(', '.join(splices))
     cur_dim = sum(spliced_dims)
 
-    this_jesus_output_dim = args.jesus_output_dim
+    if l == 1:
+        # just have an affine component for the first hidden layer.
+        # we don't need a nonlinearity as there is one at the input of
+        # the jesus component.
+        print('component name=x-affine1 type=AffineComponent '
+              'input-dim={0} output-dim={1} bias-stddev=0'.format(
+                cur_dim, args.jesus_input_dim), file=f)
+        print('component-node name=x-affine1 component=x-affine1 input={0}'.format(
+                cur_input), file=f)
+        cur_affine_output_dim = args.jesus_input_dim
+        cur_output = 'x-affine1'
+        continue
+
 
     # As input to the Jesus component we'll append the spliced input and any
     # mean/stddev-stats input, and the first thing inside the component that
@@ -327,7 +333,7 @@ for l in range(1, num_hidden_layers + 1):
           "num-repeats={3} param-stddev={4} bias-mean={5} bias-stddev=0'".format(
             (5 if need_input_permute_component else 4),
             args.jesus_hidden_dim,
-            this_jesus_output_dim,
+            args.jesus_output_dim,
             args.num_jesus_blocks,
             args.jesus_stddev_scale / math.sqrt(args.jesus_hidden_dim / args.num_jesus_blocks),
             0.5 * args.jesus_stddev_scale),
@@ -346,10 +352,10 @@ for l in range(1, num_hidden_layers + 1):
 
     # still within the post-Jesus component, print the ReLU
     print(" component1='type=RectifiedLinearComponent dim={0} self-repair-scale={1}'".format(
-            this_jesus_output_dim, args.self_repair_scale), file=f, end='')
+            args.jesus_output_dim, args.self_repair_scale), file=f, end='')
     # still within the post-Jesus component, print the NormalizeComponent
     print(" component2='type=NormalizeComponent dim={0} '".format(
-            this_jesus_output_dim), file=f, end='')
+            args.jesus_output_dim), file=f, end='')
     print("", file=f) # print newline.
     print('component-node name=x-post-jesus{0} component=x-post-jesus{0} input=x-jesus{0}'.format(l),
           file=f)
@@ -374,7 +380,7 @@ print('component name=x-final-affine type=NaturalGradientAffineComponent '
 print('component-node name=x-final-affine component=x-final-affine input=x-final-relu',
       file=f)
 print('component name=x-final-scale type=FixedScaleComponent dim={0} scale={1}'.format(
-        args.output_dim, args.output_scale);
+        args.output_dim, args.output_scale), file=f)
 print('component-node name=x-final-scale component=x-final-scale input=x-final-affine',
       file=f)
 print('output-node name=output input=x-final-scale', file=f)
@@ -388,14 +394,14 @@ print('output-node name=output input=x-final-scale', file=f)
 # nodes.
 
 # First the S output...
-s_dim = ((args.output_dim)+(args.output_dim+1))/2)
+s_dim = ((args.output_dim)*(args.output_dim+1)) / 2
 print('component name=x-s type=ConstantFunctionComponent input-dim={0} output-dim={1} '
       'output-mean=0 output-stddev=0 '.format(
             args.feat_dim, ((args.output_dim)+(args.output_dim+1))/2), file=f)
 print('component-node name=x-s component=x-s input=IfDefined(input)',
       file=f)
 print('component name=x-s-scale type=FixedScaleComponent dim={0} scale={1}'.format(
-            s_dim, args.s_scale));
+            s_dim, args.s_scale), file=f);
 print('component-node name=x-s-scale component=x-s-scale input=x-s',
       file=f)
 print('output-node name=s input=x-s-scale', file=f)
@@ -406,7 +412,7 @@ print('component name=x-b type=ConstantFunctionComponent input-dim={0} output-di
       'output-mean=0 output-stddev=0 '.format(args.feat_dim), file=f)
 print('component-node name=x-b component=x-b input=IfDefined(input)', file=f)
 print('component name=x-b-scale type=FixedScaleComponent dim=1 scale={0}'.format(
-        args.b_scale));
+        args.b_scale), file=f);
 print('component-node name=x-b-scale component=x-b-scale input=input',
       file=f)
 print('output-node name=b input=x-b-scale', file=f)

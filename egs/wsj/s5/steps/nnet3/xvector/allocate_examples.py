@@ -6,8 +6,7 @@
 # You call it as (e.g.)
 #
 #  allocate_examples.py --min-frames-per-chunk=50 --max-frames-per-chunk=200  --frames-per-iter=1000000 \
-#   --num-archives=169 --num-jobs=24  exp/xvector_a/egs/temp/utt2len.train exp/xvector_a/egs/temp
-#
+#   --num-archives=169 --num-jobs=24  exp/xvector_a/egs/temp/utt2len.train exp/xvector_a/egs
 #
 # and this program outputs certain things to the temp directory (exp/xvector_a/egs/temp in this case)
 # that will enable you to dump the xvectors.  What we'll eventually be doing is invoking the following
@@ -35,7 +34,7 @@
 # all the outputs.* files you'll get 'num-archives'.  The number of frames in each archive
 # will be about the --frames-per-iter.
 #
-# This program will also output to the temp directory a file called archive_info which gives you
+# This program will also output to the temp directory a file called archive_chunk_lengths which gives you
 # the pairs of frame-lengths associated with each archives. e.g.
 # 1   60  180
 # 2   120  85
@@ -50,8 +49,8 @@ from __future__ import print_function
 import re, os, argparse, sys, math, warnings, random
 
 
-parser = argparse.ArgumentParser(description="Writes ranges.*, outputs.* and archive_info files "
-                                 "in preparation for dumping egs for xvector training."
+parser = argparse.ArgumentParser(description="Writes ranges.*, outputs.* and archive_chunk_lengths files "
+                                 "in preparation for dumping egs for xvector training.",
                                  epilog="Called by steps/nnet3/xvector/get_egs.sh")
 parser.add_argument("--min-frames-per-chunk", type=int, default=50,
                     help="Minimum number of frames-per-chunk used for any archive")
@@ -71,15 +70,15 @@ parser.add_argument("--seed", type=int, default=1,
 parser.add_argument("utt2len",
                     help="utt2len file of the features to be used as input (format is: "
                     "<utterance-id> <approx-num-frames>)");
-parser.add_argument("output_dir",
-                    help="Directory to write the output, ranges.*, outputs.* and archive_info");
+parser.add_argument("egs_dir",
+                    help="Name of egs directory, e.g. exp/xvector_a/egs");
 
 print(' '.join(sys.argv))
 
 args = parser.parse_args()
 
-if not os.path.exists(args.output_dir):
-    os.makedirs(args.output_dir)
+if not os.path.exists(args.egs_dir + "/temp"):
+    os.makedirs(args.egs_dir + "/temp")
 
 ## Check arguments.
 if args.min_frames_per_chunk <= 1:
@@ -96,354 +95,150 @@ if args.num_jobs > args.num_archives:
 
 random.seed(args.seed)
 
+
 f = open(args.utt2len, "r");
 if f is None:
     sys.exit("Error opening utt2len file " + str(args.utt2len));
-
 utt_ids = []
-durations = []
+lengths = []
 for line in f:
     a = line.split()
     if len(a) != 2:
         sys.exit("bad line in utt2len file " + line);
     utt_ids.append(a[0])
-    durations.append(a[1])
+    lengths.append(int(a[1]))
+f.close()
 
 num_utts = len(utt_ids)
-max_duration = max(durations)
+max_length = max(lengths)
 
-
-if args.max_frames_per_chunk * 3 > max_duration:
+if args.max_frames_per_chunk * 3 > max_length:
     sys.exit("--max-frames-per-chunk={0} is not valid: it must be no more "
-             "than a third of the maximum duration {1} from the utt2len file ".format(
-            args.max_frames_per_chunk, max_duration))
+             "than a third of the maximum length {1} from the utt2len file ".format(
+            args.max_frames_per_chunk, max_length))
 
-
-# this function returns a random integer utterance index with probability
-# proportional to its length.
-def RandomUtt(min_length):
+# this function returns a random integer utterance index, limited to utterances
+# above a minimum length in frames, with probability proportional to its length.
+def RandomUttAtLeastThisLong(min_length):
     while True:
         i = random.randrange(0, num_utts)
-        # read the next line as 'with probability durations[i] / max_duration'.
+        # read the next line as 'with probability lengths[i] / max_length'.
         # this allows us to draw utterances with probability with
         # prob proportional to their length.
-        if random.random() < durations[i] / max_duration:
+        if lengths[i] > min_length and random.random() < lengths[i] / float(max_length):
             return i
 
-# all_archives is an array of arrays, one per archive.
-# Each archive's array is an array of 4-tuples
-all_archives = []
-
-for
-
-
-
-
-# this is a bit like a struct, initialized from a string, which describes how to
-# set up the statistics-pooling and statistics-extraction components.
-# An example string is 'mean(-99:3:9::99)', which means, compute the mean of
-# data within a window of -99 to +99, with distinct means computed every 9 frames
-# (we round to get the appropriate one), and with the input extracted on multiples
-# of 3 frames (so this will force the input to this layer to be evaluated
-# every 3 frames).  Another example string is 'mean+stddev(-99:3:9:99)',
-# which will also cause the standard deviation to be computed; or
-# 'mean+stddev+count(-99:3:9:99)'.
-class StatisticsConfig:
-    # e.g. c = StatisticsConfig('mean+stddev(-99:3:9:99)', 400, 100, 'jesus1-output-affine')
-    # e.g. c = StatisticsConfig('mean+stddev+count(-99:3:9:99)', 400, 100, 'jesus1-output-affine')
-    def __init__(self, config_string, input_dim, num_jesus_blocks, input_name):
-        self.input_dim = input_dim
-        self.num_jesus_blocks = num_jesus_blocks  # we need to know this because
-                                                  # it's the dimension of the count
-                                                  # features that we output.
-        self.input_name = input_name
-
-        m = re.search("mean(|\+stddev)(|\+count)\((-?\d+):(-?\d+):(-?\d+):(-?\d+)\)",
-                      config_string)
-        if m == None:
-            sys.exit("Invalid splice-index or statistics-config string: " + config_string)
-        self.output_stddev = (m.group(1) == '+stddev')
-        self.output_count = (m.group(1) == '+count')
-
-        self.left_context = -int(m.group(2))
-        self.input_period = int(m.group(3))
-        self.stats_period = int(m.group(4))
-        self.right_context = int(m.group(5))
-        if not (self.left_context > 0 and self.right_context > 0 and
-                self.input_period > 0 and self.stats_period > 0 and
-                self.num_jesus_blocks > 0 and
-                self.left_context % self.stats_period == 0 and
-                self.right_context % self.stats_period == 0 and
-                self.stats_period % self.input_period == 0):
-            sys.exit("Invalid configuration of statistics-extraction: " + config_string)
-
-    # OutputDim() returns the output dimension of the node that this produces.
-    def OutputDim(self):
-        return self.input_dim * (2 if self.output_stddev else 1) + (self.num_jesus_blocks if self.output_count else 0)
+# this function returns a random integer drawn from the range
+# [min-frames-per-chunk, max-frames-per-chunk], but distributed log-uniform.
+def RandomChunkLength():
+    log_value = (math.log(args.min_frames_per_chunk) +
+                 random.random() * math.log(args.max_frames_per_chunk /
+                                            args.min_frames_per_chunk))
+    ans = int(math.exp(log_value) + 0.45)
+    return ans
 
 
-    # OutputDims() returns an array of output dimensions... this node produces
-    # one output node, but this array explains how it's split up into different types
-    # of output (which will affect how we reorder the indexes for the jesus-layer).
-    def OutputDims(self):
-        ans = [ self.input_dim ]
-        if self.output_stddev:
-            ans.append(self.input_dim)
-        if self.output_count:
-            ans.append(self.num_jesus_blocks)
-        return ans
+# given an utterance length utt_length (in frames) and two desired chunk lengths
+# (length1 and length2) whose sum is <= utt_length,
+# this function randomly picks the starting points of the chunks for you.
+# the chunks may appear randomly in either order.
+def GetRandomOffsets(utt_length, length1, length2):
+    tot_length = length1 + length2
+    if tot_length > utt_length:
+        sys.exit("code error: tot-length > utt-length")
+    free_length = utt_length - tot_length
 
-    # Descriptor() returns the textual form of the descriptor by which the
-    # output of this node is to be accessed.
-    def Descriptor(self):
-        return 'Round({0}-pooling-{1}-{2}, {3})'.format(self.input_name, self.left_context,
-                                                        self.right_context, self.stats_period)
+    # We want to randomly divide free_length into 3 pieces a, b, c
+    # so that we'll have:
+    # utt_length = a + length1 + b + length2 + c
+    # or
+    # utt_length = a + length2 + b + length1 + c
+    # where the order shows you in what order the pieces come (note:
+    # we may randomly switch the left and right chunks later on.
+    # so we want random a,b,c such that a + b + c = free_length;
+    # we can achieve this elegantly as follows:
+    while True:
+        a = random.randrange(0, free_length + 1)
+        b = random.randrange(0, free_length + 1)
+        c = free_length - a - b
+        if c >= 0:
+            break
+    if random.random() < 0.5: # chunk with length1 is earlier
+        offset1 = a
+        offset2 = a + length1 + b
+    else:            # chunk with length2 is earlier
+        offset2 = a
+        offset1 = a + length2 + b
+    return (offset1, offset2)
 
-    # This function writes the configuration lines need to compute the specified
-    # statistics, to the file f.
-    def WriteConfigs(self, f):
-        print('component name={0}-extraction-{1}-{2} type=StatisticsExtractionComponent input-dim={3} '
-              'input-period={4} output-period={5} include-variance={6} '.format(
-                self.input_name, self.left_context, self.right_context,
-                self.input_dim, self.input_period, self.stats_period,
-                ('true' if self.output_stddev else 'false')), file=f)
-        print('component-node name={0}-extraction-{1}-{2} component={0}-extraction-{1}-{2} input={0} '.format(
-                self.input_name, self.left_context, self.right_context), file=f)
-        stats_dim = 1 + self.input_dim * (2 if self.output_stddev else 1)
-        print('component name={0}-pooling-{1}-{2} type=StatisticsPoolingComponent input-dim={3} '
-              'input-period={4} left-context={1} right-context={2} num-log-count-features=0 '
-              'output-stddevs={5} '.format(self.input_name, self.left_context, self.right_context,
-                                           stats_dim, self.stats_period,
-                                           ('true' if self.output_stddev else 'false')),
+
+# archive_chunk_lengths and all_archives will be arrays of dimension
+# args.num_archives.  archive_chunk_lengths contains 2-tuples
+# (left-num-frames, right-num-frames).
+archive_chunk_lengths = []  # archive
+# each element of all_egs (one per archive) is
+# an array of 3-tuples (utterance-index, offset1, offset2)
+all_egs= []
+
+info_f = open(args.egs_dir + "/temp/archive_chunk_lengths", "w")
+if info_f is None:
+    sys.exit("Error opening file {0}/temp/archive_chunk_lengths".format(args.egs_dir));
+
+for archive_index in range(args.num_archives):
+    print("Processing archive {0}".format(archive_index + 1))
+    length1 = RandomChunkLength();
+    length2 = RandomChunkLength();
+    print("{0} {1} {2}".format(archive_index + 1, length1, length2), file=info_f)
+    archive_chunk_lengths.append( (length1, length2) )
+    tot_length = length1 + length2
+    this_num_egs = (args.frames_per_iter / tot_length) + 1
+    this_egs = [ ] # this will be an array of 3-tuples (utterance-index, left-start-frame, right-start-frame).
+    for n in range(this_num_egs):
+        utt_index = RandomUttAtLeastThisLong(tot_length)
+        utt_len = lengths[utt_index]
+        (offset1, offset2) = GetRandomOffsets(utt_len, length1, length2)
+        this_egs.append( (utt_index, offset1, offset2) )
+    all_egs.append(this_egs)
+info_f.close()
+
+# work out how many archives we assign to each job in an equitable way.
+num_archives_per_job = [ 0 ] * args.num_jobs
+for i in range(0, args.num_archives):
+    num_archives_per_job[i % args.num_jobs]  = num_archives_per_job[i % args.num_jobs] + 1
+
+
+cur_archive = 0
+for job in range(args.num_jobs):
+    this_ranges = []
+    this_archives_for_job = []
+    this_num_archives = num_archives_per_job[job]
+
+    for i in range(0, this_num_archives):
+        this_archives_for_job.append(cur_archive)
+        for (utterance_index, offset1, offset2) in all_egs[cur_archive]:
+            this_ranges.append( (utterance_index, i, offset1, offset2) )
+        cur_archive = cur_archive + 1
+    f = open(args.egs_dir + "/temp/ranges." + str(job + 1), "w")
+    if f is None:
+        sys.exit("Error opening file " + args.egs_dir + "/temp/ranges." + str(job + 1))
+    for (utterance_index, i, offset1, offset2) in sorted(this_ranges):
+        archive_index = this_archives_for_job[i]
+        print("{0} {1} {2} {3} {4}".format(utt_ids[utterance_index],
+                                           archive_index + 1,
+                                           offset1,
+                                           archive_chunk_lengths[archive_index][0],
+                                           offset2,
+                                           archive_chunk_lengths[archive_index][1]),
               file=f)
-        print('component-node name={0}-pooling-{1}-{2} component={0}-pooling-{1}-{2} input={0}-extraction-{1}-{2} '.format(
-                self.input_name, self.left_context, self.right_context), file=f)
+    f.close()
+
+    f = open(args.egs_dir + "/temp/outputs." + str(job + 1), "w")
+    if f is None:
+        sys.exit("Error opening file " + args.egs_dir + "/temp/outputs." + str(job + 1))
+    print( " ".join([ "{0}/egs_temp.{1}.ark".format(args.egs_dir, n + 1) for n in this_archives_for_job ]),
+           file=f)
+    f.close()
 
 
+print("allocate_examples.py: finished generating ranges.* and outputs.* files")
 
-
-## Work out splice_array
-## e.g. for
-## args.splice_indexes == '-3,-2,-1,0,1,2,3 -3,0:-3 -3,0:-3 -6,-3,0:-6,-3'
-## we would have
-##   splice_array = [ [ -3,-2,...3 ], [-3,0] [-3,0] [-6,-3,0]
-
-
-splice_array = []
-left_context = 0
-right_context = 0
-split_on_spaces = args.splice_indexes.split(" ");  # we already checked the string is nonempty.
-if len(split_on_spaces) < 2:
-    sys.exit("invalid --splice-indexes argument, too short: "
-             + args.splice_indexes)
-try:
-    for string in split_on_spaces:
-        this_layer = len(splice_array)
-
-        this_splices = string.split(",")
-        splice_array.append(this_splices)
-        # the rest of this block just does some checking.
-        for s in this_splices:
-            try:
-                n = int(s)
-            except:
-                if len(splice_array) == 1:
-                    sys.exit("First dimension of splicing array must not have averaging [yet]")
-                try:
-                    x = StatisticsConfig(s, 100, 100, 'foo')
-                except:
-                    sys.exit("The following element of the splicing array is not a valid specifier "
-                    "of statistics: " + s)
-
-except ValueError as e:
-    sys.exit("invalid --splice-indexes argument " + args.splice_indexes + " " + str(e))
-
-num_hidden_layers = len(splice_array)
-
-
-# all the remaining layers after the inputs in 'init.config' are added in one go.
-f = open(args.config_dir + "/layers.config", "w")
-
-print('input-node name=input dim=' + str(args.feat_dim), file=f)
-cur_output = 'input'
-cur_affine_output_dim = args.feat_dim
-
-for l in range(1, num_hidden_layers + 1):
-    # the following summarizes the structure of the layers:  Here, the Jesus component includes ReLU at its input and output, and renormalize
-    #   at its output after the ReLU.
-    # layer1: splice + affine + ReLU + renormalize
-    # layerX: splice + Jesus + affine + ReLU
-
-    # Inside the jesus component is:
-    #  [permute +] ReLU + repeated-affine + ReLU + repeated-affine
-    # [we make the repeated-affine the last one so we don't have to redo that in backprop].
-    # We follow this with a post-jesus composite component containing the operations:
-    #  [permute +] ReLU + renormalize
-    # call this post-jesusN.
-    # After this we use dim-range nodes to split up the output into
-    # [ jesusN-output, jesusN-direct-output and jesusN-projected-output ]
-    # parts;
-    # and nodes for the jesusN-affine.
-
-    print('# Config file for layer {0} of the network'.format(l), file=f)
-
-    splices = []
-    spliced_dims = []
-    for s in splice_array[l-1]:
-        # the connection from the previous layer
-        try:
-            offset = int(s)
-            # it's an integer offset.
-            splices.append('Offset({0}, {1})'.format(cur_output, offset))
-            spliced_dims.append(cur_affine_output_dim)
-        except:
-            # it's not an integer offset, so assume it specifies the
-            # statistics-extraction.
-            stats = StatisticsConfig(s, cur_affine_output_dim,
-                                     args.num_jeus_blocks, cur_output)
-            stats.WriteConfigs(f)
-            splices.append(stats.Descriptor())
-            spliced_dims.extend(stats.OutputDims())
-
-    # get the input to the Jesus layer.
-    cur_input = 'Append({0})'.format(', '.join(splices))
-    cur_dim = sum(spliced_dims)
-
-    this_jesus_output_dim = args.jesus_output_dim
-
-    # As input to the Jesus component we'll append the spliced input and any
-    # mean/stddev-stats input, and the first thing inside the component that
-    # we do is rearrange the dimensions so that things pertaining to a
-    # particular block stay together.
-
-    column_map = []
-    for x in range(0, args.num_jesus_blocks):
-        dim_offset = 0
-        for src_splice in spliced_dims:
-            src_block_size = src_splice / args.num_jesus_blocks
-            for y in range(0, src_block_size):
-                column_map.append(dim_offset + (x * src_block_size) + y)
-            dim_offset += src_splice
-    if sorted(column_map) != range(0, sum(spliced_dims)):
-        print("column_map is " + str(column_map))
-        print("num_jesus_blocks is " + str(args.num_jesus_blocks))
-        print("spliced_dims is " + str(spliced_dims))
-        sys.exit("code error creating new column order")
-
-    need_input_permute_component = (column_map != range(0, sum(spliced_dims)))
-
-    # Now add the jesus component.
-    num_sub_components = (5 if need_input_permute_component else 4);
-    print('component name=x-jesus{0} type=CompositeComponent num-components={1}'.format(
-            l, num_sub_components), file=f, end='')
-    # print the sub-components of the CompositeComopnent on the same line.
-    # this CompositeComponent has the same effect as a sequence of
-    # components, but saves memory.
-    if need_input_permute_component:
-        print(" component1='type=PermuteComponent column-map={1}'".format(
-                l, ','.join([str(x) for x in column_map])), file=f, end='')
-    print(" component{0}='type=RectifiedLinearComponent dim={1} self-repair-scale={2}'".format(
-            (2 if need_input_permute_component else 1),
-            cur_dim, args.self_repair_scale), file=f, end='')
-
-    print(" component{0}='type=NaturalGradientRepeatedAffineComponent input-dim={1} output-dim={2} "
-          "num-repeats={3} param-stddev={4} bias-mean={5} bias-stddev=0'".format(
-            (3 if need_input_permute_component else 2),
-            cur_dim, args.jesus_hidden_dim,
-            args.num_jesus_blocks,
-            args.jesus_stddev_scale / math.sqrt(cur_dim / args.num_jesus_blocks),
-            0.5 * args.jesus_stddev_scale),
-          file=f, end='')
-
-    print(" component{0}='type=RectifiedLinearComponent dim={1} self-repair-scale={2}'".format(
-            (4 if need_input_permute_component else 3),
-            args.jesus_hidden_dim, args.self_repair_scale), file=f, end='')
-
-    print(" component{0}='type=NaturalGradientRepeatedAffineComponent input-dim={1} output-dim={2} "
-          "num-repeats={3} param-stddev={4} bias-mean={5} bias-stddev=0'".format(
-            (5 if need_input_permute_component else 4),
-            args.jesus_hidden_dim,
-            this_jesus_output_dim,
-            args.num_jesus_blocks,
-            args.jesus_stddev_scale / math.sqrt(args.jesus_hidden_dim / args.num_jesus_blocks),
-            0.5 * args.jesus_stddev_scale),
-          file=f, end='')
-
-    print("", file=f) # print newline.
-    print('component-node name=x-jesus{0} component=x-jesus{0} input={1}'.format(
-            l, cur_input), file=f)
-
-    # now print the post-Jesus component which consists of ReLU +
-    # renormalize.
-
-    num_sub_components = 2
-    print('component name=x-post-jesus{0} type=CompositeComponent num-components=2'.format(l),
-          file=f, end='')
-
-    # still within the post-Jesus component, print the ReLU
-    print(" component1='type=RectifiedLinearComponent dim={0} self-repair-scale={1}'".format(
-            this_jesus_output_dim, args.self_repair_scale), file=f, end='')
-    # still within the post-Jesus component, print the NormalizeComponent
-    print(" component2='type=NormalizeComponent dim={0} '".format(
-            this_jesus_output_dim), file=f, end='')
-    print("", file=f) # print newline.
-    print('component-node name=x-post-jesus{0} component=x-post-jesus{0} input=x-jesus{0}'.format(l),
-          file=f)
-
-    cur_affine_output_dim = (args.jesus_input_dim if l < num_hidden_layers else args.final_hidden_dim)
-    print('component name=x-affine{0} type=NaturalGradientAffineComponent '
-          'input-dim={1} output-dim={2} bias-stddev=0'.
-          format(l, args.jesus_output_dim, cur_affine_output_dim), file=f)
-    print('component-node name=x-jesus{0}-output-affine component=x-affine{0} input=x-post-jesus{0}'.format(
-            l), file=f)
-
-    cur_output = 'x-jesus{0}-output-affine'.format(l)
-
-
-print('component name=x-final-relu type=RectifiedLinearComponent dim={0} self-repair-scale={1}'.format(
-        cur_affine_output_dim, args.self_repair_scale), file=f)
-print('component-node name=x-final-relu component=x-final-relu input={0}'.format(cur_output),
-      file=f)
-print('component name=x-final-affine type=NaturalGradientAffineComponent '
-      'input-dim={0} output-dim={1} bias-stddev=0'.format(
-        cur_affine_output_dim, args.output_dim), file=f)
-print('component-node name=x-final-affine component=x-final-affine input=x-final-relu',
-      file=f)
-print('component name=x-final-scale type=FixedScaleComponent dim={0} scale={1}'.format(
-        args.output_dim, args.output_scale);
-print('component-node name=x-final-scale component=x-final-scale input=x-final-affine',
-      file=f)
-print('output-node name=output input=x-final-scale', file=f)
-
-# print components and nodes for the 'S' output (which is a vectorization of a
-# symmetric-positive-definite matrix used in scoring), and the 'b' output (which
-# is a scalar used in scoring).  Both of these are components of type
-# ConstantFunctionComponent-- its output is a learned constant independent of
-# the input-- so the input is pointless, but having an input keeps the component
-# interface consistent and avoided us having to handle a graph with dangling
-# nodes.
-
-# First the S output...
-s_dim = ((args.output_dim)+(args.output_dim+1))/2)
-print('component name=x-s type=ConstantFunctionComponent input-dim={0} output-dim={1} '
-      'output-mean=0 output-stddev=0 '.format(
-            args.feat_dim, ((args.output_dim)+(args.output_dim+1))/2), file=f)
-print('component-node name=x-s component=x-s input=IfDefined(input)',
-      file=f)
-print('component name=x-s-scale type=FixedScaleComponent dim={0} scale={1}'.format(
-            s_dim, args.s_scale));
-print('component-node name=x-s-scale component=x-s-scale input=x-s',
-      file=f)
-print('output-node name=s input=x-s-scale', file=f)
-
-# now the 'b' output, which is just a scalar.
-b_dim = 1
-print('component name=x-b type=ConstantFunctionComponent input-dim={0} output-dim=1 '
-      'output-mean=0 output-stddev=0 '.format(args.feat_dim), file=f)
-print('component-node name=x-b component=x-b input=IfDefined(input)', file=f)
-print('component name=x-b-scale type=FixedScaleComponent dim=1 scale={0}'.format(
-        args.b_scale));
-print('component-node name=x-b-scale component=x-b-scale input=input',
-      file=f)
-print('output-node name=b input=x-b-scale', file=f)
-f.close()
