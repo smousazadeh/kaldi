@@ -165,10 +165,9 @@ int main(int argc, char *argv[]) {
     const char *usage =
         "Get examples for training an nnet3 neural network for the xvector\n"
         "system.  Each output example contains a pair of feature chunks from\n"
-        "the same utterance.  The 'ranges' file specifies the location and\n"
-        "length of each chunk in the features file, as well as the output\n"
-        "archive to which the resulting example is written.  Each line is\n"
-        "interpreted as follows:\n"
+        "the same utterance.  The location and length of the feature chunks\n"
+        "are specified in the 'ranges' file.  Each line is interpreted as\n"
+        "follows:\n"
         "  <source-utterance> <output-archive-index>  <start-frame-index1>"
         " <num-frames1> <start-frame-index2> <num-frames2>\n"
         "For example:\n"
