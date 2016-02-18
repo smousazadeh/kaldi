@@ -46,4 +46,19 @@ if [ $stage -le 4 ]; then
     "$data" $xvector_dir/egs
 fi
 
+if [ $stage -le 5 ]; then
+  # training for 4 epochs * 3 shifts means we see each eg 12
+  # times (3 different frame-shifts of the same eg are counted as different).
+  steps/nnet3/xvector/train.sh --cmd "$train_cmd" \
+      --num-epochs 4 --num-shifts 3 \
+      --num-jobs-initial 2 --num-jobs-final 8 \
+      $xvector_dir
+fi
+
+if [ $stage -le 6 ]; then
+  # uncomment the following line to have it remove the egs when you are done.
+  # steps/nnet2/remove_egs.sh $xvector_dir/egs
+fi
+
+
 exit 0;
