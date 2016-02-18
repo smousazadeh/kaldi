@@ -2098,20 +2098,25 @@ static void _diff_xent(const int32_cuda* vec_tgt, Real* mat_net_out, Real* vec_l
 template<typename Real>
 __global__
 static void _compute_xvector_objf(const Real* scores, MatrixDim scores_dim,
-                                  Real* obfj_terms, MatrixDim objf_dim, 
-                                  Real* obfj_derivs, MatrixDim derivs_dim) {
+                                  Real* objf_terms, MatrixDim objf_dim, 
+                                  Real* objf_derivs, MatrixDim derivs_dim) {
   int32_cuda i = blockIdx.x * blockDim.x + threadIdx.x;
   int32_cuda j = blockIdx.y * blockDim.y + threadIdx.y;
   int32_cuda scores_index = i + j * scores_dim.stride;
+  int32_cuda objf_index = i + j * objf_dim.stride;
+  int32_cuda derivs_index = i + j * derivs_dim.stride;
   Real K = 1.0 / (scores_dim.rows - 2.0);
   Real L = scores[scores_index];
   if (i < scores_dim.cols && j < scores_dim.rows) {
     if (i + 1 == j && i % 2 == 0) {
-      obfj_terms[scores_index] = log(1.0 + exp(-L));
-      obfj_derivs[scores_index] = 1.0 / (1.0 + exp(L));
+      objf_terms[objf_index] = L < -15 ? -L : log(1.0 + exp(-L));
+      objf_derivs[derivs_index] = 1.0 / (1.0 + exp(L));
     } else if (i < j) {
-      obfj_terms[scores_index] = K * log(1.0 + exp(L));
-      obfj_derivs[scores_index] = -K / (1.0 + exp(-L));
+      objf_terms[objf_index] = K * (L > 15 ? L : log(1.0 + exp(L)));
+      objf_derivs[derivs_index] = -K / (1.0 + exp(-L));
+    } else {
+      objf_terms[objf_index] = 0.0;
+      objf_derivs[derivs_index] = 0.0;
     }
   }
 }

@@ -46,10 +46,10 @@ void ComputeXvectorObjfAndDeriv(
                       P(N, xvector_dim),
                       Q(N, N),
                       R(N, N),
-                      scores(N, N),           // The raw scores.
-                      objf_terms(N, N),
-                      objf_deriv_terms(N, N); // Derivative of the
-                                              // objf w.r.t. the scores.
+                      scores(N, N),                 // The raw scores.
+                      objf_terms(N, N, kUndefined),
+                      objf_deriv_terms(N, N,        // Derivative of the
+                                       kUndefined); // objf w.r.t. the scores.
   CuVector<BaseFloat> r(N);
 
   P.AddMatMat(1.0, xvector_pairs, kNoTrans, S_tmp, kNoTrans, 0.0);

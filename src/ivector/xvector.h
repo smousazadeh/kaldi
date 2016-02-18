@@ -32,7 +32,7 @@ namespace kaldi {
   /*
   Computes the training objective function and the derivatives for
   the xvector.  Let N = xvector_pairs.NumRows() be the number of
-  xvectors. There are N(N-1)/2 pairs in total and N from the same
+  xvectors. There are N(N-1)/2 pairs in total and N/2 from the same
   class. Let v(n) be the n'th row of the matrix xvector_pairs.
   The total objective function written to 'tot_objf' is
       \sum_{n=0}^{N/2} p_same(v(n*2), v(n*2+1))
@@ -61,9 +61,9 @@ namespace kaldi {
   the objective function with respect to the parameter b is written here.
   @param [out] tot_objf  The total objective function described above
   @param [out] tot_weight  The total normalizing factor for the objective
-  function, equal to dvector_pairs.NumRows().
+  function, equal to xvector_pairs.NumRows().
   */
-  void ComputeXvectorObjfAndDeriv(const CuMatrixBase<BaseFloat> &dvector_pairs,
+  void ComputeXvectorObjfAndDeriv(const CuMatrixBase<BaseFloat> &xvector_pairs,
     const CuSpMatrix<BaseFloat> &S,
     BaseFloat b,
     CuMatrixBase<BaseFloat> *deriv_xvector,
