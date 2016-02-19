@@ -40,7 +40,7 @@ void TestComputeXvectorObjfAndDeriv(
     BaseFloat *tot_weight);
 
 bool TestXvectorExtractorDerivative(BaseFloat perturb_delta) {
-  int32 xvector_dim = RandInt(4, 50),
+  int32 xvector_dim = RandInt(4, 100),
         num_rows = 2 * RandInt(2, 10); // The number of rows must be even
                                        // and greater than 2.
   CuSpMatrix<BaseFloat> S(xvector_dim);
@@ -126,7 +126,7 @@ bool TestXvectorExtractorDerivative(BaseFloat perturb_delta) {
 }
 
 bool TestXvectorComputeObjf() {
-  int32 xvector_dim = RandInt(4, 40),
+  int32 xvector_dim = RandInt(4, 100),
         num_rows = 2 * RandInt(2, 10); // The number of rows must be even
                                        // and greater than 2.
   CuSpMatrix<BaseFloat> S(xvector_dim);

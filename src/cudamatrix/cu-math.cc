@@ -227,16 +227,21 @@ void ComputeXvectorObjfFromScores(const CuMatrixBase<BaseFloat> &scores,
   } else
   #endif
   {
+    // Compute the xvector objective function and its derivatives in the CPU.
     int32 num_rows = scores.NumRows();
     BaseFloat K = 1.0 / (num_rows - 2.0);
     for (int32 i = 0; i < num_rows; i++) {
-      for (int32 j = i + 1; j < num_rows; j++) {
+      for (int32 j = 0; j < num_rows; j++) {
+        BaseFloat L = scores(i, j);
         if (i + 1 == j && i % 2 == 0) {
-          (*objf_terms)(i, j) = log(1.0 + exp(-scores(i, j)));
-          (*objf_derivs)(i, j) = 1.0 / (1.0 + exp(scores(i, j)));
+          (*objf_terms)(i, j) = L < -15 ? -L : log(1.0 + exp(-L));
+          (*objf_derivs)(i, j) = 1.0 / (1.0 + exp(L));
+        } else if (i < j) {
+          (*objf_terms)(i, j) = K * (L > 15 ? L : log(1.0 + exp(L)));
+          (*objf_derivs)(i, j) = -K / (1.0 + exp(-L));
         } else {
-          (*objf_terms)(i, j) = K * log(1.0 + exp(scores(i, j)));
-          (*objf_derivs)(i, j) = -K / (1.0 + exp(-scores(i, j)));
+          (*objf_terms)(i, j) = 0;
+          (*objf_derivs)(i, j) = 0;
         }
       }
     }

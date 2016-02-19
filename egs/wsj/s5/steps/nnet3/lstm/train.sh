@@ -137,12 +137,6 @@ if [ $# != 4 ]; then
   echo "                                                   # increase the effective learning rate."
   echo "  --num-jobs-initial <num-jobs|1>                  # Number of parallel jobs to use for neural net training, at the start."
   echo "  --num-jobs-final <num-jobs|8>                    # Number of parallel jobs to use for neural net training, at the end"
-  echo "  --num-threads <num-threads|16>                   # Number of parallel threads per job, for CPU-based training (will affect"
-  echo "                                                   # results as well as speed; may interact with batch size; if you increase"
-  echo "                                                   # this, you may want to decrease the batch size."
-  echo "  --parallel-opts <opts|\"-pe smp 16 -l ram_free=1G,mem_free=1G\">      # extra options to pass to e.g. queue.pl for processes that"
-  echo "                                                   # use multiple threads... note, you might have to reduce mem_free,ram_free"
-  echo "                                                   # versus your defaults, because it gets multiplied by the -pe smp argument."
   echo "  --splice-indexes <string|\"-2,-1,0,1,2 0 0\"> "
   echo "                                                   # Frame indices used for each splice layer."
   echo "                                                   # Format : <frame_indices> .... <frame_indices> "
@@ -651,7 +645,7 @@ while [ $x -lt $num_iters ]; do
       rm $dir/$[$x-1].mdl
     fi
   fi
-  rm $dir/cache.$x 2>/dev/null 
+  rm $dir/cache.$x 2>/dev/null
   x=$[$x+1]
   num_archives_processed=$[$num_archives_processed+$this_num_jobs]
 done

@@ -97,13 +97,14 @@ fi
 if [ ! -f $data/utt2dur ]; then
   # getting this utt2dur will normally be more lightweight than
   # getting the exact utterance-to-length map.
-  utils/data/get_utt2dur.sh $data/utt2dur || exit 1;
+  utils/data/get_utt2dur.sh $data || exit 1;
 fi
 
 frame_shift=$(utils/data/get_frame_shift.sh $data) || exit 1;
-feat_dim=$(feat-to-len scp:$data/feat.scp) || exit 1
+feat_dim=$(feat-to-dim scp:$data/feats.scp -) || exit 1
 
-mkdir -p $dir/info $dir/log
+mkdir -p $dir/info $dir/info $dir/temp
+temp=$dir/temp
 
 echo $feat_dim > $dir/info/feat_dim
 
@@ -111,31 +112,30 @@ if [ $stage -le 0 ]; then
   echo "$0: getting utt2len file"
   # note: this utt2len file is only an approximation of the number of
   # frames in each file.
-  cat $data/utt2dur | awk -v frame_shift=$frame_shift '{print $1, int($2 / frame_shift);}' > $dir/utt2len
+  cat $data/utt2dur | awk -v frame_shift=$frame_shift '{print $1, int($2 / frame_shift);}' > $dir/temp/utt2len
 fi
 
-mkdir -p $dir/log $dir/info $dir/temp
 
-temp=$dir/temp
+if [ $stage -le 1 ]; then
+  echo "$0: getting list of validation utterances"
 
 # Get list of validation utterances.
-awk '{print $1}' $data/utt2spk | utils/shuffle_list.pl | head -$num_utts_subset \
+  awk '{print $1}' $data/utt2spk | utils/shuffle_list.pl | head -$num_utts_subset \
     > $temp/valid_uttlist || exit 1;
 
-if [ -f $data/utt2uniq ]; then  # this matters if you use data augmentation.
-  echo "File $data/utt2uniq exists, so augmenting valid_uttlist to"
-  echo "include all perturbed versions of the same 'real' utterances."
-  mv $temp/valid_uttlist $temp/valid_uttlist.tmp
-  utils/utt2spk_to_spk2utt.pl $data/utt2uniq > $temp/uniq2utt
-  cat $temp/valid_uttlist.tmp | utils/apply_map.pl $data/utt2uniq | \
-    sort | uniq | utils/apply_map.pl $temp/uniq2utt | \
-    awk '{for(n=1;n<=NF;n++) print $n;}' | sort  > $temp/valid_uttlist
-  rm $temp/uniq2utt $temp/valid_uttlist.tmp
+  if [ -f $data/utt2uniq ]; then  # this matters if you use data augmentation.
+    echo "File $data/utt2uniq exists, so augmenting valid_uttlist to"
+    echo "include all perturbed versions of the same 'real' utterances."
+    mv $temp/valid_uttlist $temp/valid_uttlist.tmp
+    utils/utt2spk_to_spk2utt.pl $data/utt2uniq > $temp/uniq2utt
+    cat $temp/valid_uttlist.tmp | utils/apply_map.pl $data/utt2uniq | \
+      sort | uniq | utils/apply_map.pl $temp/uniq2utt | \
+      awk '{for(n=1;n<=NF;n++) print $n;}' | sort  > $temp/valid_uttlist
+    rm $temp/uniq2utt $temp/valid_uttlist.tmp
+  fi
+  utils/filter_scp.pl --exclude $temp/valid_uttlist <$temp/utt2len > $temp/utt2len.train
+  utils/filter_scp.pl $temp/valid_uttlist <$temp/utt2len > $temp/utt2len.valid
 fi
-
-
-utils/filter_scp.pl --exclude $temp/valid_uttlist <$temp/utt2len > $temp/utt2len.train
-utils/filter_scp.pl $temp/valid_uttlist <$temp/utt2len > $temp/utt2len.valid
 
 
 # first for the training data... work out how many archives.
@@ -150,60 +150,38 @@ echo "$0: producing $num_train_archives archives for training"
 echo $num_train_archives > $dir/info/num_archives
 
 
-
-
-
-# the + 1 is to round up, not down... we assume it doesn't divide exactly.
-num_archives=$[$num_frames/($frames_per_eg*$samples_per_iter)+1]
-# (for small data)- while reduce_frames_per_eg == true and the number of
-# archives is 1 and would still be 1 if we reduced frames_per_eg by 1, reduce it
-# by 1.
-reduced=false
-while $reduce_frames_per_eg && [ $frames_per_eg -gt 1 ] && \
-  [ $[$num_frames/(($frames_per_eg-1)*$samples_per_iter)] -eq 0 ]; do
-  frames_per_eg=$[$frames_per_eg-1]
-  num_archives=1
-  reduced=true
-done
-$reduced && echo "$0: reduced frames_per_eg to $frames_per_eg because amount of data is small."
-
-# We may have to first create a smaller number of larger archives, with number
-# $num_archives_intermediate, if $num_archives is more than the maximum number
-# of open filehandles that the system allows per process (ulimit -n).
-max_open_filehandles=$(ulimit -n) || exit 1
-num_archives_intermediate=$num_archives
-archives_multiple=1
-while [ $[$num_archives_intermediate+4] -gt $max_open_filehandles ]; do
-  archives_multiple=$[$archives_multiple+1]
-  num_archives_intermediate=$[$num_archives/$archives_multiple+1];
-done
-# now make sure num_archives is an exact multiple of archives_multiple.
-num_archives=$[$archives_multiple*$num_archives_intermediate]
-
-echo $num_archives >$dir/info/num_archives
-echo $frames_per_eg >$dir/info/frames_per_eg
-# Work out the number of egs per archive
-egs_per_archive=$[$num_frames/($frames_per_eg*$num_archives)]
-! [ $egs_per_archive -le $samples_per_iter ] && \
-  echo "$0: script error: egs_per_archive=$egs_per_archive not <= samples_per_iter=$samples_per_iter" \
-  && exit 1;
-
-echo $egs_per_archive > $dir/info/egs_per_archive
-
-echo "$0: creating $num_archives archives, each with $egs_per_archive egs, with"
-echo "$0:   $frames_per_eg labels per example, and (left,right) context = ($left_context,$right_context)"
-
-
-
-if [ -e $dir/storage ]; then
-  # Make soft links to storage directories, if distributing this way..  See
-  # utils/create_split_dir.pl.
-  echo "$0: creating data links"
-  utils/create_data_link.pl $(for x in $(seq $num_archives); do echo $dir/egs.$x.ark; done)
-  for x in $(seq $num_archives_intermediate); do
-    utils/create_data_link.pl $(for y in $(seq $nj); do echo $dir/egs_orig.$y.$x.ark; done)
-  done
+if [ $nj -gt $num_train_archives ]; then
+  echo "$0: reducing num-jobs $nj to number of training archives $num_train_archives"
+  nj=$num_train_archives
 fi
+
+if [ $stage -le 2 ]; then
+  if [ -e $dir/storage ]; then
+    # Make soft links to storage directories, if distributing this way..  See
+    # utils/create_split_dir.pl.
+    echo "$0: creating data links"
+    utils/create_data_link.pl $(for x in $(seq $num_train_archives); do echo $dir/egs.$x.ark; done)
+    utils/create_data_link.pl $(for x in $(seq $num_train_archives); do echo $dir/egs_temp.$x.ark; done)
+  fi
+fi
+
+if [ $stage -le 3 ]; then
+  echo "$0: allocating examples"
+  $cmd $dir/log/allocate_examples.log \
+    steps/nnet3/xvector/allocate_examples.py \
+      --min-frames-per-chunk=$min_frames_per_chunk \
+      --max-frames-per-chunk=$max_frames_per_chunk \
+      --frames-per-iter=$frames_per_iter \
+      --num-archives=$num_train_archives --num-jobs=$nj \
+      $dir/temp/utt2len.train $dir  || exit 1
+fi
+
+# HERE - todo.
+
+exit 0
+
+
+
 
 if [ $stage -le 2 ]; then
   echo "$0: copying data alignments"
