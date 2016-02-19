@@ -9,21 +9,21 @@
 #   --num-archives=169 --num-jobs=24  exp/xvector_a/egs/temp/utt2len.train exp/xvector_a/egs
 #
 # and this program outputs certain things to the temp directory (exp/xvector_a/egs/temp in this case)
-# that will enable you to dump the xvectors.  What we'll eventually be doing is invoking the following
-# program with something like the following args:
+# that will enable you to dump the chunks for xvector training.  What we'll eventually be doing is invoking
+# the following program with something like the following args:
 #
-#  nnet3-xvector-get-egs1 [options] exp/xvector_a/temp/ranges.1  scp:data/train/feats.scp \
+#  nnet3-xvector-get-egs [options] exp/xvector_a/temp/ranges.1  scp:data/train/feats.scp \
 #    ark:exp/xvector_a/egs/egs_temp.1.ark ark:exp/xvector_a/egs/egs_temp.2.ark \
 #    ark:exp/xvector_a/egs/egs_temp.3.ark
 #
 # where exp/xvector_a/temp/ranges.1 contains something like the following:
 #
-#   utt1  3   0   65  112  110
-#   utt1  0   160 50  214  180
+#   utt1  3  0  0   65  112  110
+#   utt1  0  2  160 50  214  180
 #   utt2  ...
 #
 # where each line is interpreted as follows:
-#  <source-utterance> <output-archive-index>  <start-frame-index1> <num-frames1> <start-frame-index2> <num-frames2>
+#  <source-utterance> <relative-archive-index> <ouput-archive-index> <start-frame-index1> <num-frames1> <start-frame-index2> <num-frames2>
 # and for each line we create an eg (containing two possibly-different-length chunks of data from the
 # same utterance), to one of the output archives.  The list of archives corresponding to
 # ranges.n will be written to output.n, so in exp/xvector_a/temp/outputs.1 we'd have:
@@ -52,10 +52,18 @@ import re, os, argparse, sys, math, warnings, random
 parser = argparse.ArgumentParser(description="Writes ranges.*, outputs.* and archive_chunk_lengths files "
                                  "in preparation for dumping egs for xvector training.",
                                  epilog="Called by steps/nnet3/xvector/get_egs.sh")
+parser.add_argument("--prefix", type=str, default="",
+                   help="Adds a prefix to the output files. This is used to distinguish between the train "
+                   "and diagnostic files.")
 parser.add_argument("--min-frames-per-chunk", type=int, default=50,
                     help="Minimum number of frames-per-chunk used for any archive")
 parser.add_argument("--max-frames-per-chunk", type=int, default=300,
                     help="Maximum number of frames-per-chunk used for any archive")
+parser.add_argument("--randomize-chunk-length", type=str,
+                    help="If true, randomly pick a chunk length in [min-frames-per-chunk, max-frames-per-chunk]."
+                    "If false, the chunk length varies from min-frames-per-chunk to max-frames-per-chunk"
+                    "according to a geometric sequence.",
+                    default="true", choices = ["false", "true"])
 parser.add_argument("--frames-per-iter", type=int, default=1000000,
                     help="Target number of frames for each archive")
 parser.add_argument("--num-archives", type=int, default=-1,
@@ -137,6 +145,18 @@ def RandomChunkLength():
     ans = int(math.exp(log_value) + 0.45)
     return ans
 
+# This function returns an integer in the range
+# [min-frames-per-chunk, max-frames-per-chunk] according to a geometric
+# sequence. For example, suppose min-frames-per-chunk is 50,
+# max-frames-per-chunk is 200, and args.num_archives is 3. Then the
+# lengths for archives 0, 1, and 2 will be 50, 100, and 200.
+def DeterministicChunkLength(archive_id):
+  ans = int(math.pow(float(args.max_frames_per_chunk) /
+                     args.min_frames_per_chunk, float(archive_id) /
+                     (args.num_archives-1)) * args.min_frames_per_chunk + 0.5)
+  return ans
+
+
 
 # given an utterance length utt_length (in frames) and two desired chunk lengths
 # (length1 and length2) whose sum is <= utt_length,
@@ -180,14 +200,21 @@ archive_chunk_lengths = []  # archive
 # an array of 3-tuples (utterance-index, offset1, offset2)
 all_egs= []
 
-info_f = open(args.egs_dir + "/temp/archive_chunk_lengths", "w")
-if info_f is None:
-    sys.exit("Error opening file {0}/temp/archive_chunk_lengths".format(args.egs_dir));
+prefix = ""
+if args.prefix != "":
+  prefix = args.prefix + "_"
 
+info_f = open(args.egs_dir + "/temp/" + prefix + "archive_chunk_lengths", "w")
+if info_f is None:
+    sys.exit(str("Error opening file {0}/temp/" + prefix + "archive_chunk_lengths").format(args.egs_dir));
 for archive_index in range(args.num_archives):
     print("Processing archive {0}".format(archive_index + 1))
-    length1 = RandomChunkLength();
-    length2 = RandomChunkLength();
+    if args.randomize_chunk_length == "true":
+      length1 = RandomChunkLength();
+      length2 = length1
+    else:
+      length1 = DeterministicChunkLength(archive_index);
+      length2 = length1
     print("{0} {1} {2}".format(archive_index + 1, length1, length2), file=info_f)
     archive_chunk_lengths.append( (length1, length2) )
     tot_length = length1 + length2
@@ -218,12 +245,13 @@ for job in range(args.num_jobs):
         for (utterance_index, offset1, offset2) in all_egs[cur_archive]:
             this_ranges.append( (utterance_index, i, offset1, offset2) )
         cur_archive = cur_archive + 1
-    f = open(args.egs_dir + "/temp/ranges." + str(job + 1), "w")
+    f = open(args.egs_dir + "/temp/" + prefix + "ranges." + str(job + 1), "w")
     if f is None:
-        sys.exit("Error opening file " + args.egs_dir + "/temp/ranges." + str(job + 1))
+        sys.exit("Error opening file " + args.egs_dir + "/temp/" + prefix + "ranges." + str(job + 1))
     for (utterance_index, i, offset1, offset2) in sorted(this_ranges):
         archive_index = this_archives_for_job[i]
-        print("{0} {1} {2} {3} {4}".format(utt_ids[utterance_index],
+        print("{0} {1} {2} {3} {4} {5} {6}".format(utt_ids[utterance_index],
+                                           i,
                                            archive_index + 1,
                                            offset1,
                                            archive_chunk_lengths[archive_index][0],
@@ -232,13 +260,13 @@ for job in range(args.num_jobs):
               file=f)
     f.close()
 
-    f = open(args.egs_dir + "/temp/outputs." + str(job + 1), "w")
+    f = open(args.egs_dir + "/temp/" + prefix + "outputs." + str(job + 1), "w")
     if f is None:
-        sys.exit("Error opening file " + args.egs_dir + "/temp/outputs." + str(job + 1))
-    print( " ".join([ "{0}/egs_temp.{1}.ark".format(args.egs_dir, n + 1) for n in this_archives_for_job ]),
+        sys.exit("Error opening file " + args.egs_dir + "/temp/" + prefix + "outputs." + str(job + 1))
+    print( " ".join([ str("{0}/" + prefix + "egs_temp.{1}.ark").format(args.egs_dir, n + 1) for n in this_archives_for_job ]),
            file=f)
     f.close()
 
 
-print("allocate_examples.py: finished generating ranges.* and outputs.* files")
+print("allocate_examples.py: finished generating " + prefix + "ranges.* and " + prefix + "outputs.* files")
 
