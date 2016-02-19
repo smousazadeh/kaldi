@@ -9,7 +9,7 @@
 #   --num-archives=169 --num-jobs=24  exp/xvector_a/egs/temp/utt2len.train exp/xvector_a/egs
 #
 # and this program outputs certain things to the temp directory (exp/xvector_a/egs/temp in this case)
-# that will enable you to dump the chunks for xvector trainign.  What we'll eventually be doing is invoking
+# that will enable you to dump the chunks for xvector training.  What we'll eventually be doing is invoking
 # the following program with something like the following args:
 #
 #  nnet3-xvector-get-egs [options] exp/xvector_a/temp/ranges.1  scp:data/train/feats.scp \
