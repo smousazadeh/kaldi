@@ -1,4 +1,4 @@
-// ivector/xvector.h
+// xvector/xvector.h
 
 // Copyright 2016    Johns Hopkins University (Author: Daniel Povey)
 //           2016    David Snyder

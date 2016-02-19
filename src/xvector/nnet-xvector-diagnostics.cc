@@ -18,7 +18,7 @@
 // limitations under the License.
 
 #include "nnet3/nnet-diagnostics.h"
-#include "ivector/nnet-xvector-diagnostics.h"
+#include "xvector/nnet-xvector-diagnostics.h"
 #include "nnet3/nnet-utils.h"
 
 namespace kaldi {

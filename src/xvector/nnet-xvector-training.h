@@ -26,7 +26,7 @@
 #include "nnet3/nnet-compute.h"
 #include "nnet3/nnet-optimize.h"
 #include "nnet3/nnet-example-utils.h"
-#include "ivector/xvector.h"
+#include "xvector/xvector.h"
 #include "nnet3/nnet-training.h"
 
 namespace kaldi {
