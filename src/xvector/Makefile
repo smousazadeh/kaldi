@@ -8,11 +8,11 @@ include ../kaldi.mk
 LDFLAGS += $(CUDA_LDFLAGS)
 LDLIBS += $(CUDA_LDLIBS)
 
-TESTFILES = ivector-extractor-test plda-test logistic-regression-test 
+TESTFILES = xvector-test
 
-OBJFILES = ivector-extractor.o voice-activity-detection.o plda.o logistic-regression.o 
+OBJFILES = xvector.o nnet-xvector-training.o nnet-xvector-diagnostics.o 
 
-LIBNAME = kaldi-ivector
+LIBNAME = kaldi-xvector
 
 ADDLIBS = ../gmm/kaldi-gmm.a ../tree/kaldi-tree.a ../transform/kaldi-transform.a \
           ../thread/kaldi-thread.a ../nnet3/kaldi-nnet3.a ../cudamatrix/kaldi-cudamatrix.a \

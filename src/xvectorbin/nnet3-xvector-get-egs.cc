@@ -1,4 +1,4 @@
-// nnet3bin/nnet3-xvector-get-egs.cc
+// xvectorbin/nnet3-xvector-get-egs.cc
 
 // Copyright 2012-2016  Johns Hopkins University (author:  Daniel Povey)
 //                2016  David Snyder
