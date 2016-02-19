@@ -101,8 +101,7 @@ class CuPackedMatrix {
   void CopyFromPacked(const PackedMatrix<Real> &src);
   void CopyToPacked(PackedMatrix<Real> *dst) const;
 
-  template<typename OtherReal>
-  void CopyFromVec(const CuVectorBase<OtherReal> &vec);
+  void CopyFromVec(const CuVectorBase<Real> &vec);
 
   void Read(std::istream &in, bool binary);
   

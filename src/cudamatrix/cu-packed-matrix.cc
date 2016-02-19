@@ -194,28 +194,14 @@ void CuPackedMatrix<Real>::CopyToPacked(PackedMatrix<Real> *dst) const {
 }
 
 template<typename Real>
-template<typename OtherReal>
-void CuPackedMatrix<Real>::CopyFromVec(const CuVectorBase<OtherReal> &vec) {
+void CuPackedMatrix<Real>::CopyFromVec(const CuVectorBase<Real> &vec) {
   MatrixIndexT size = (NumRows() * (NumRows() + 1)) / 2;
   KALDI_ASSERT(vec.Dim() == size);
-#if HAVE_CUDA == 1
-  if (CuDevice::Instantiate().Enabled()) {
-    Timer tim;
-  } else
-#endif
-  {
-    //Mat().CopyFromVec(vec.Vec());
-  } 
+  CuSubVector<Real> this_as_vec(data_,
+  (num_rows_ *
+  (num_rows_ + 1) ) / 2);
+  this_as_vec.CopyFromVec(vec);
 }
-// Instantiate the template above.
-template
-void CuPackedMatrix<float>::CopyFromVec<float>(const CuVectorBase<float> &vec);
-template
-void CuPackedMatrix<float>::CopyFromVec<double>(const CuVectorBase<double> &vec);
-template
-void CuPackedMatrix<double>::CopyFromVec<double>(const CuVectorBase<double> &vec);
-template
-void CuPackedMatrix<double>::CopyFromVec<float>(const CuVectorBase<float> &vec);
 
 /*
 template<typename Real>
