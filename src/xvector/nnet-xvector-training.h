@@ -18,8 +18,8 @@
 // See the Apache 2 License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef KALDI_IVECTOR_NNET_XVECTOR_TRAINING_H_
-#define KALDI_IVECTOR_NNET_XVECTOR_TRAINING_H_
+#ifndef KALDI_XVECTOR_NNET_XVECTOR_TRAINING_H_
+#define KALDI_XVECTOR_NNET_XVECTOR_TRAINING_H_
 
 #include "nnet3/nnet-example.h"
 #include "nnet3/nnet-computation.h"
@@ -86,4 +86,4 @@ void GetComputationRequestXvector(const Nnet &nnet,
 } // namespace nnet3
 } // namespace kaldi
 
-#endif // 
+#endif //
