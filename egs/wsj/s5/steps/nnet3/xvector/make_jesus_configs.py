@@ -138,7 +138,6 @@ class StatisticsConfig:
     def OutputDim(self):
         return self.input_dim * (2 if self.output_stddev else 1) + (self.num_jesus_blocks if self.output_count else 0)
 
-
     # OutputDims() returns an array of output dimensions... this node produces
     # one output node, but this array explains how it's split up into different types
     # of output (which will affect how we reorder the indexes for the jesus-layer).
@@ -168,10 +167,11 @@ class StatisticsConfig:
                 self.input_name, self.left_context, self.right_context), file=f)
         stats_dim = 1 + self.input_dim * (2 if self.output_stddev else 1)
         print('component name={0}-pooling-{1}-{2} type=StatisticsPoolingComponent input-dim={3} '
-              'input-period={4} left-context={1} right-context={2} num-log-count-features=0 '
+              'input-period={4} left-context={1} right-context={2} num-log-count-features={6} '
               'output-stddevs={5} '.format(self.input_name, self.left_context, self.right_context,
                                            stats_dim, self.stats_period,
-                                           ('true' if self.output_stddev else 'false')),
+                                           ('true' if self.output_stddev else 'false'),
+                                           (self.num_jesus_blocks if self.output_count else 0)),
               file=f)
         print('component-node name={0}-pooling-{1}-{2} component={0}-pooling-{1}-{2} input={0}-extraction-{1}-{2} '.format(
                 self.input_name, self.left_context, self.right_context), file=f)
@@ -369,7 +369,6 @@ for l in range(1, num_hidden_layers + 1):
 
     cur_output = 'x-jesus{0}-output-affine'.format(l)
 
-
 print('component name=x-final-relu type=RectifiedLinearComponent dim={0} self-repair-scale={1}'.format(
         cur_affine_output_dim, args.self_repair_scale), file=f)
 print('component-node name=x-final-relu component=x-final-relu input={0}'.format(cur_output),
@@ -394,10 +393,11 @@ print('output-node name=output input=x-final-scale', file=f)
 # nodes.
 
 # First the S output...
-s_dim = ((args.output_dim)*(args.output_dim+1)) / 2
+s_dim = ((args.output_dim)*(args.output_dim+1))/2
+
 print('component name=x-s type=ConstantFunctionComponent input-dim={0} output-dim={1} '
       'output-mean=0 output-stddev=0 '.format(
-            args.feat_dim, ((args.output_dim)+(args.output_dim+1))/2), file=f)
+            args.feat_dim, s_dim), file=f)
 print('component-node name=x-s component=x-s input=IfDefined(input)',
       file=f)
 print('component name=x-s-scale type=FixedScaleComponent dim={0} scale={1}'.format(
@@ -413,7 +413,7 @@ print('component name=x-b type=ConstantFunctionComponent input-dim={0} output-di
 print('component-node name=x-b component=x-b input=IfDefined(input)', file=f)
 print('component name=x-b-scale type=FixedScaleComponent dim=1 scale={0}'.format(
         args.b_scale), file=f);
-print('component-node name=x-b-scale component=x-b-scale input=input',
+print('component-node name=x-b-scale component=x-b-scale input=x-b',
       file=f)
 print('output-node name=b input=x-b-scale', file=f)
 f.close()
