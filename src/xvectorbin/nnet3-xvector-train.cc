@@ -30,16 +30,16 @@ int main(int argc, char *argv[]) {
     typedef kaldi::int64 int64;
 
     const char *usage =
-        "Train nnet3 neural network parameters with backprop and stochastic\n"
+        "Train xvector neural network parameters with backprop and stochastic\n"
         "gradient descent.  Minibatches are to be created by nnet3-merge-egs in\n"
         "the input pipeline.  This training program is single-threaded (best to\n"
         "use it with a GPU); see nnet3-train-parallel for multi-threaded training\n"
         "that is better suited to CPUs.\n"
         "\n"
-        "Usage:  nnet3-train [options] <raw-model-in> <training-examples-in> <raw-model-out>\n"
+        "Usage:  nnet3-xvector-train [options] <raw-model-in> <training-examples-in> <raw-model-out>\n"
         "\n"
         "e.g.:\n"
-        "nnet3-train 1.raw 'ark:nnet3-merge-egs 1.egs ark:-|' 2.raw\n";
+        "nnet3-xvector-train 1.raw 'ark:nnet3-merge-egs 1.egs ark:-|' 2.raw\n";
 
     bool binary_write = true;
     std::string use_gpu = "yes";

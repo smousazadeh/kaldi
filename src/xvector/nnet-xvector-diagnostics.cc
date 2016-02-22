@@ -92,7 +92,7 @@ void NnetXvectorComputeProb::ProcessOutputs(NnetComputer *computer) {
         int32 s_dim = xvector_pairs.NumCols() * (xvector_pairs.NumCols() + 1) / 2;
 
         // convert CuVector to CuSpMatrix
-        CuSpMatrix<BaseFloat> xvec_s_sp(s_dim);
+        CuSpMatrix<BaseFloat> xvec_s_sp(xvector_pairs.NumCols());
         xvec_s_sp.CopyFromVec(xvec_s.Row(0));
 
         CuVector<BaseFloat> deriv_s(s_dim);
@@ -102,7 +102,7 @@ void NnetXvectorComputeProb::ProcessOutputs(NnetComputer *computer) {
         ComputeXvectorObjfAndDeriv(xvector_pairs, xvec_s_sp, xvec_b_val,
                                    (supply_deriv ? &xvector_deriv : NULL),
                                    (supply_deriv ? &deriv_s : NULL),
-                                   &deriv_b,
+                                   (supply_deriv ? &deriv_b : NULL),
                                    &tot_objf,
                                    &tot_weight);
         if (supply_deriv) {
