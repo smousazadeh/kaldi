@@ -110,8 +110,8 @@ static void WriteExamples(const MatrixBase<BaseFloat> &feats,
                                   pair->num_frames1, 0, feat_dim),
                            chunk2(feats, pair->start_frame2 + shift2,
                                   pair->num_frames2, 0, feat_dim);
-      NnetIo nnet_io1 = NnetIo("input1", 0, chunk1),
-             nnet_io2 = NnetIo("input2", 0, chunk2);
+      NnetIo nnet_io1 = NnetIo("input", 0, chunk1),
+             nnet_io2 = NnetIo("input", 0, chunk2);
       for (std::vector<Index>::iterator indx_it = nnet_io1.indexes.begin();
           indx_it != nnet_io1.indexes.end(); ++indx_it)
         indx_it->n = 0;

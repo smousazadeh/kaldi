@@ -51,7 +51,7 @@ NnetXvectorTrainer::NnetXvectorTrainer(const NnetTrainerOptions &config,
       KALDI_WARN << "Could not open cached computation. "
                     "Probably this is the first training iteration.";
     }
-  } 
+  }
 }
 
 
@@ -96,7 +96,7 @@ void NnetXvectorTrainer::Train(const NnetExample &eg) {
   if (config_.write_cache != "") {
     Output ko(config_.write_cache, config_.binary_write_cache);
     compiler_.WriteCache(ko.Stream(), config_.binary_write_cache);
-  } 
+  }
 }
 
 void NnetXvectorTrainer::ProcessOutputs(NnetComputer *computer) {
@@ -104,12 +104,12 @@ void NnetXvectorTrainer::ProcessOutputs(NnetComputer *computer) {
     if (nnet_->IsOutputNode(node_index)) {
       BaseFloat tot_weight, tot_objf;
       bool supply_deriv = true;
-      // For each xvector output node, we expect two output nodes with name "s" 
+      // For each xvector output node, we expect two output nodes with name "s"
       // and "b", which store symmetric affine transformation and bias term
       // for xvector-objective computation.
       std::string xvector_name = nnet_->GetNodeName(node_index),
         s_name = "s", b_name = "b";
-      if (nnet_->GetNodeIndex(s_name) == -1 || nnet_->GetNodeIndex(b_name) == -1) 
+      if (nnet_->GetNodeIndex(s_name) == -1 || nnet_->GetNodeIndex(b_name) == -1)
         KALDI_ERR << "The nnet expected to have two output nodes with name s and b.";
 
       if (xvector_name != s_name && xvector_name != b_name) {
@@ -119,11 +119,11 @@ void NnetXvectorTrainer::ProcessOutputs(NnetComputer *computer) {
         CuMatrix<BaseFloat> xvector_deriv(xvector_pairs.NumRows(), xvector_pairs.NumCols(),
                                           kUndefined);
         int32 s_dim = xvector_pairs.NumCols() * (xvector_pairs.NumCols() + 1) / 2;
-        
-        // convert CuVector to CuSpMatrix 
+
+        // convert CuVector to CuSpMatrix
         CuSpMatrix<BaseFloat> xvec_s_sp(s_dim);
         xvec_s_sp.CopyFromVec(xvec_s.Row(0));
-        
+
         CuVector<BaseFloat> deriv_s(s_dim);
         BaseFloat xvec_b_val = xvec_b(0,0), deriv_b;
         ComputeXvectorObjfAndDeriv(xvector_pairs, xvec_s_sp, xvec_b_val,
@@ -142,7 +142,7 @@ void NnetXvectorTrainer::ProcessOutputs(NnetComputer *computer) {
           computer->AcceptOutputDeriv(s_name, &deriv_s_mat);
           computer->AcceptOutputDeriv(b_name, &deriv_b_mat);
         }
-        
+
         objf_info_[xvector_name].UpdateStats(xvector_name, config_.print_interval,
                                              num_minibatches_processed_++,
                                              tot_weight, tot_objf);
@@ -221,7 +221,7 @@ bool ObjectiveFunctionInfo::PrintTotalStats(const std::string &name) const {
               << (tot_objf / tot_weight) << " over " << tot_weight << " frames.";
   } else {
     KALDI_LOG << "Overall average objective function for '" << name << "' is "
-              << objf << " + " << aux_objf << " = " << sum_objf        
+              << objf << " + " << aux_objf << " = " << sum_objf
               << " over " << tot_weight << " frames.";
   }
   KALDI_LOG << "[this line is to be parsed by a script:] "
@@ -245,33 +245,36 @@ void GetComputationRequestXvector(const Nnet &nnet,
   request->outputs.reserve(eg.io.size());
   request->need_model_derivative = need_model_derivative;
   request->store_component_stats = store_component_stats;
+
   // xvector-egs have multiple inputs(e.g. different inputs correspond
   // to different chunks and no outputs.
   for (size_t i = 0; i < eg.io.size(); i++) {
     const NnetIo &io = eg.io[i];
     const std::string &name = io.name;
     int32 node_index = nnet.GetNodeIndex(name);
+
     if (node_index == -1 &&
         !nnet.IsInputNode(node_index))
       KALDI_ERR << "xvector example has input  named '" << name
                 << "', but no such input node is in the network.";
 
     std::vector<IoSpecification> &dest = request->inputs;
-    //    nnet.IsInputNode(node_index) ? request->inputs : request->outputs;
     dest.resize(dest.size() + 1);
     IoSpecification &io_spec = dest.back();
     io_spec.name = name;
     io_spec.indexes = io.indexes;
     io_spec.has_deriv = nnet.IsOutputNode(node_index) && need_model_derivative;
   }
+
   // We only need the output on frame t=0 for each n.
   int32 io_index_size = request->inputs[0].indexes.size();
   std::vector<Index> output_indexes;
   output_indexes.resize(io_index_size);
-  for (int32 ind = 0; io_index_size; ind++) {
+  for (int32 ind = 0; ind < io_index_size; ind++) {
     output_indexes[ind].n = ind;
     output_indexes[ind].t = 0;
   }
+
   // In order to generate computation request for output nodes,
   // we should find output nodes and add io_spec for each one.
   int32 num_nodes = nnet.NumNodes();
@@ -285,6 +288,7 @@ void GetComputationRequestXvector(const Nnet &nnet,
       io_spec.has_deriv = need_model_derivative;
     }
   }
+
   // check to see if something went wrong.
   if (request->inputs.empty())
     KALDI_ERR << "No inputs in computation request.";
