@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Copyright 2012-2015 Johns Hopkins University (Author: Daniel Povey).  Apache 2.0.
+# Copyright 2012-2016 Johns Hopkins University (Author: Daniel Povey)
+#                2016 David Snyder
+# Apache 2.0
 #
 # This script dumps training examples (egs) for xvector training.  These egs
 # have only an input and no outputs (the inputs are typically MFCCs).  The egs
@@ -15,12 +17,6 @@
 # This script, which will generally be called from other neural-net training
 # scripts, extracts the training examples used to train the neural net (and also
 # the validation examples used for diagnostics), and puts them in separate archives.
-#
-# This script dumps egs with several frames of labels, controlled by the
-# frames_per_eg config variable (default: 8).  This takes many times less disk
-# space because typically we have 4 to 7 frames of context on the left and
-# right, and this ends up getting shared.  This is at the expense of slightly
-# higher disk I/O while training.
 
 
 # Begin configuration section.
@@ -94,6 +90,9 @@ if [ ! -f $data/feats.scp ]; then
   exit 1
 fi
 
+sdata=$data/split$nj
+utils/split_data.sh $data $nj
+
 if [ ! -f $data/utt2dur ]; then
   # getting this utt2dur will normally be more lightweight than
   # getting the exact utterance-to-length map.
@@ -120,34 +119,49 @@ if [ $stage -le 1 ]; then
   echo "$0: getting list of validation utterances"
 
 # Get list of validation utterances.
-  awk '{print $1}' $data/utt2spk | utils/shuffle_list.pl | head -$num_utts_subset \
+  awk '{print $1}' $data/utt2spk | utils/shuffle_list.pl | head -$num_heldout_utts \
     > $temp/valid_uttlist || exit 1;
 
+  awk '{print $1}' $data/utt2spk | utils/filter_scp.pl --exclude $temp/valid_uttlist \
+    | utils/shuffle_list.pl | head -$num_heldout_utts > $temp/train_subset_uttlist || exit 1;
+
   if [ -f $data/utt2uniq ]; then  # this matters if you use data augmentation.
-    echo "File $data/utt2uniq exists, so augmenting valid_uttlist to"
-    echo "include all perturbed versions of the same 'real' utterances."
-    mv $temp/valid_uttlist $temp/valid_uttlist.tmp
     utils/utt2spk_to_spk2utt.pl $data/utt2uniq > $temp/uniq2utt
-    cat $temp/valid_uttlist.tmp | utils/apply_map.pl $data/utt2uniq | \
-      sort | uniq | utils/apply_map.pl $temp/uniq2utt | \
-      awk '{for(n=1;n<=NF;n++) print $n;}' | sort  > $temp/valid_uttlist
-    rm $temp/uniq2utt $temp/valid_uttlist.tmp
+    for uttlist in valid_uttlist train_subset_uttlist; do
+      echo "File $data/utt2uniq exists, so augmenting $uttlist to"
+      echo "include all perturbed versions of the same 'real' utterances."
+      mv $temp/$uttlist $temp/${uttlist}.tmp
+      cat $temp/$uttlist.tmp | utils/apply_map.pl $data/utt2uniq | \
+        sort | uniq | utils/apply_map.pl $temp/uniq2utt | \
+        awk '{for(n=1;n<=NF;n++) print $n;}' | sort  > $temp/$uttlist
+    done
+    rm $temp/uniq2utt $temp/$uttlist.tmp
   fi
+
+  awk '{print $1}' $temp/utt2len |
   utils/filter_scp.pl --exclude $temp/valid_uttlist <$temp/utt2len > $temp/utt2len.train
   utils/filter_scp.pl $temp/valid_uttlist <$temp/utt2len > $temp/utt2len.valid
+  utils/filter_scp.pl $temp/train_subset_uttlist <$temp/utt2len > $temp/utt2len.train_subset
 fi
+
+# TODO: Currently just supporting raw features
+feats="scp,s,cs:utils/filter_scp.pl $temp/ranges.JOB $data/feats.scp |"
+valid_feats="scp,s,cs:utils/filter_scp.pl $temp/valid_uttlist $data/feats.scp |"
+train_subset_feats="scp,s,cs:utils/filter_scp.pl $temp/train_subset_uttlist $data/feats.scp |"
 
 
 # first for the training data... work out how many archives.
 
 num_train_frames=$(awk '{n += $2} END{print n}' <$temp/utt2len.train)
 num_valid_frames=$(awk '{n += $2} END{print n}' <$temp/utt2len.valid)
+num_train_subset_frames=$(awk '{n += $2} END{print n}' <$temp/utt2len.train_subset)
 
 echo $num_train_frames >$dir/info/num_frames
 
 num_train_archives=$[($num_train_frames*$num_repeats)/$frames_per_iter + 1]
 echo "$0: producing $num_train_archives archives for training"
 echo $num_train_archives > $dir/info/num_archives
+echo $num_diagnostic_archives > $dir/info/num_diagnostic_archives
 
 
 if [ $nj -gt $num_train_archives ]; then
@@ -166,147 +180,71 @@ if [ $stage -le 2 ]; then
 fi
 
 if [ $stage -le 3 ]; then
-  echo "$0: allocating examples"
-  $cmd $dir/log/allocate_examples.log \
+  echo "$0: allocating training examples"
+  $cmd $dir/log/allocate_examples_train.log \
     steps/nnet3/xvector/allocate_examples.py \
       --min-frames-per-chunk=$min_frames_per_chunk \
       --max-frames-per-chunk=$max_frames_per_chunk \
       --frames-per-iter=$frames_per_iter \
       --num-archives=$num_train_archives --num-jobs=$nj \
       $dir/temp/utt2len.train $dir  || exit 1
-fi
 
-# HERE - todo.
+  echo "$0: allocating training subset examples"
+  $cmd $dir/log/allocate_examples_train_subset.log \
+    steps/nnet3/xvector/allocate_examples.py \
+      --prefix train_subset \
+      --min-frames-per-chunk=$min_frames_per_chunk \
+      --max-frames-per-chunk=$max_frames_per_chunk \
+      --randomize-chunk-length false \
+      --frames-per-iter=$frames_per_iter_diagnostic \
+      --num-archives=$num_diagnostic_archives --num-jobs=1 \
+      $dir/temp/utt2len.train_subset $dir  || exit 1
 
-exit 0
-
-
-
-
-if [ $stage -le 2 ]; then
-  echo "$0: copying data alignments"
-  for id in $(seq $num_ali_jobs); do gunzip -c $alidir/ali.$id.gz; done | \
-    copy-int-vector ark:- ark,scp:$dir/ali.ark,$dir/ali.scp || exit 1;
-fi
-
-egs_opts="--left-context=$left_context --right-context=$right_context --compress=$compress"
-
-[ -z $valid_left_context ] &&  valid_left_context=$left_context;
-[ -z $valid_right_context ] &&  valid_right_context=$right_context;
-valid_egs_opts="--left-context=$valid_left_context --right-context=$valid_right_context --compress=$compress"
-
-echo $left_context > $dir/info/left_context
-echo $right_context > $dir/info/right_context
-num_pdfs=$(tree-info --print-args=false $alidir/tree | grep num-pdfs | awk '{print $2}')
-if [ $stage -le 3 ]; then
-  echo "$0: Getting validation and training subset examples."
-  rm $dir/.error 2>/dev/null
-  echo "$0: ... extracting validation and training-subset alignments."
-
-  utils/filter_scp.pl <(cat $dir/valid_uttlist $dir/train_subset_uttlist) \
-    <$dir/ali.scp >$dir/ali_special.scp
-
-  $cmd $dir/log/create_valid_subset.log \
-    nnet3-get-egs --num-pdfs=$num_pdfs $valid_ivector_opt $valid_egs_opts "$valid_feats" \
-    "ark,s,cs:ali-to-pdf $alidir/final.mdl scp:$dir/ali_special.scp ark:- | ali-to-post ark:- ark:- |" \
-    "ark:$dir/valid_all.egs" || touch $dir/.error &
-  $cmd $dir/log/create_train_subset.log \
-    nnet3-get-egs --num-pdfs=$num_pdfs $train_subset_ivector_opt $valid_egs_opts "$train_subset_feats" \
-     "ark,s,cs:ali-to-pdf $alidir/final.mdl scp:$dir/ali_special.scp ark:- | ali-to-post ark:- ark:- |" \
-     "ark:$dir/train_subset_all.egs" || touch $dir/.error &
-  wait;
-  [ -f $dir/.error ] && echo "Error detected while creating train/valid egs" && exit 1
-  echo "... Getting subsets of validation examples for diagnostics and combination."
-  $cmd $dir/log/create_valid_subset_combine.log \
-    nnet3-subset-egs --n=$num_valid_frames_combine ark:$dir/valid_all.egs \
-    ark:$dir/valid_combine.egs || touch $dir/.error &
-  $cmd $dir/log/create_valid_subset_diagnostic.log \
-    nnet3-subset-egs --n=$num_frames_diagnostic ark:$dir/valid_all.egs \
-    ark:$dir/valid_diagnostic.egs || touch $dir/.error &
-
-  $cmd $dir/log/create_train_subset_combine.log \
-    nnet3-subset-egs --n=$num_train_frames_combine ark:$dir/train_subset_all.egs \
-    ark:$dir/train_combine.egs || touch $dir/.error &
-  $cmd $dir/log/create_train_subset_diagnostic.log \
-    nnet3-subset-egs --n=$num_frames_diagnostic ark:$dir/train_subset_all.egs \
-    ark:$dir/train_diagnostic.egs || touch $dir/.error &
-  wait
-  sleep 5  # wait for file system to sync.
-  cat $dir/valid_combine.egs $dir/train_combine.egs > $dir/combine.egs
-
-  for f in $dir/{combine,train_diagnostic,valid_diagnostic}.egs; do
-    [ ! -s $f ] && echo "No examples in file $f" && exit 1;
-  done
-  rm $dir/valid_all.egs $dir/train_subset_all.egs $dir/{train,valid}_combine.egs
+  echo "$0: allocating validation examples"
+  $cmd $dir/log/allocate_examples_valid.log \
+    steps/nnet3/xvector/allocate_examples.py \
+      --prefix valid \
+      --min-frames-per-chunk=$min_frames_per_chunk \
+      --max-frames-per-chunk=$max_frames_per_chunk \
+      --randomize-chunk-length false \
+      --frames-per-iter=$frames_per_iter_diagnostic \
+      --frames-per-iter=$frames_per_iter_diagnostic \
+      --num-archives=$num_diagnostic_archives --num-jobs=1 \
+      $dir/temp/utt2len.valid $dir  || exit 1
 fi
 
 if [ $stage -le 4 ]; then
-  # create egs_orig.*.*.ark; the first index goes to $nj,
-  # the second to $num_archives_intermediate.
-
-  egs_list=
-  for n in $(seq $num_archives_intermediate); do
-    egs_list="$egs_list ark:$dir/egs_orig.JOB.$n.ark"
-  done
   echo "$0: Generating training examples on disk"
-  # The examples will go round-robin to egs_list.
-  $cmd JOB=1:$nj $dir/log/get_egs.JOB.log \
-    nnet3-get-egs --num-pdfs=$num_pdfs $ivector_opt $egs_opts --num-frames=$frames_per_eg "$feats" \
-    "ark,s,cs:filter_scp.pl $sdata/JOB/utt2spk $dir/ali.scp | ali-to-pdf $alidir/final.mdl scp:- ark:- | ali-to-post ark:- ark:- |" ark:- \| \
-    nnet3-copy-egs --random=true --srand=JOB ark:- $egs_list || exit 1;
+  for g in $(seq $nj); do
+    outputs=`awk '{for(i=1;i<=NF;i++)printf("ark:%s ",$i);}' $temp/outputs.$g`
+    $cmd $dir/log/train_create_examples.$g.log \
+      nnet3-xvector-get-egs $temp/ranges.$g \
+      "`echo $feats | sed s/JOB/$g/g`" $outputs || exit 1 &
+  done
+  wait
+  train_subset_outputs=`awk '{for(i=1;i<=NF;i++)printf("ark:%s ",$i);}' $temp/train_subset_outputs.1`
+  echo "$0: Generating training subset examples on disk"
+  $cmd $dir/log/train_subset_create_examples.1.log \
+    nnet3-xvector-get-egs $temp/train_subset_ranges.1 \
+    "$train_subset_feats" $train_subset_outputs || exit 1
+  valid_outputs=`awk '{for(i=1;i<=NF;i++)printf("ark:%s ",$i);}' $temp/valid_outputs.1`
+  echo "$0: Generating validation examples on disk"
+  $cmd $dir/log/valid_create_examples.1.log \
+    nnet3-xvector-get-egs $temp/valid_ranges.1 \
+    "$valid_feats" $valid_outputs || exit 1
 fi
 
 if [ $stage -le 5 ]; then
-  echo "$0: recombining and shuffling order of archives on disk"
-  # combine all the "egs_orig.*.JOB.scp" (over the $nj splits of the data) and
-  # shuffle the order, writing to the egs.JOB.ark
+  echo "$0: Shuffling order of archives on disk"
+  $cmd --max-jobs-run $nj JOB=1:$num_train_archives $dir/log/shuffle.JOB.log \
+    nnet3-shuffle-egs --srand=JOB ark:$dir/egs_temp.JOB.ark ark:$dir/egs.JOB.ark  || exit 1;
 
-  # the input is a concatenation over the input jobs.
-  egs_list=
-  for n in $(seq $nj); do
-    egs_list="$egs_list $dir/egs_orig.$n.JOB.ark"
-  done
-
-  if [ $archives_multiple == 1 ]; then # normal case.
-    $cmd --max-jobs-run $nj JOB=1:$num_archives_intermediate $dir/log/shuffle.JOB.log \
-      nnet3-shuffle-egs --srand=JOB "ark:cat $egs_list|" ark:$dir/egs.JOB.ark  || exit 1;
-  else
-    # we need to shuffle the 'intermediate archives' and then split into the
-    # final archives.  we create soft links to manage this splitting, because
-    # otherwise managing the output names is quite difficult (and we don't want
-    # to submit separate queue jobs for each intermediate archive, because then
-    # the --max-jobs-run option is hard to enforce).
-    output_archives="$(for y in $(seq $archives_multiple); do echo ark:$dir/egs.JOB.$y.ark; done)"
-    for x in $(seq $num_archives_intermediate); do
-      for y in $(seq $archives_multiple); do
-        archive_index=$[($x-1)*$archives_multiple+$y]
-        # egs.intermediate_archive.{1,2,...}.ark will point to egs.archive.ark
-        ln -sf egs.$archive_index.ark $dir/egs.$x.$y.ark || exit 1
-      done
-    done
-    $cmd --max-jobs-run $nj JOB=1:$num_archives_intermediate $dir/log/shuffle.JOB.log \
-      nnet3-shuffle-egs --srand=JOB "ark:cat $egs_list|" ark:- \| \
-      nnet3-copy-egs ark:- $output_archives || exit 1;
-  fi
-
+  $cmd --max-jobs-run $nj JOB=1:$num_diagnostic_archives $dir/log/train_subset_shuffle.JOB.log \
+    nnet3-shuffle-egs --srand=JOB ark:$dir/train_subset_egs_temp.JOB.ark ark:$dir/train_diagnostic_egs.JOB.ark  || exit 1;
+  $cmd --max-jobs-run $nj JOB=1:$num_diagnostic_archives $dir/log/valid_shuffle.JOB.log \
+    nnet3-shuffle-egs --srand=JOB ark:$dir/valid_egs_temp.JOB.ark ark:$dir/valid_diagnostic_egs.JOB.ark  || exit 1;
 fi
 
-if [ $stage -le 6 ]; then
-  echo "$0: removing temporary archives"
-  for x in $(seq $nj); do
-    for y in $(seq $num_archives_intermediate); do
-      file=$dir/egs_orig.$x.$y.ark
-      [ -L $file ] && rm $(readlink -f $file)
-      rm $file
-    done
-  done
-  if [ $archives_multiple -gt 1 ]; then
-    # there are some extra soft links that we should delete.
-    for f in $dir/egs.*.*.ark; do rm $f; done
-  fi
-  echo "$0: removing temporary alignments and transforms"
-  # Ignore errors below because trans.* might not exist.
-  rm $dir/{ali,trans}.{ark,scp} 2>/dev/null
-fi
+#TODO: Probably need to cleanup the temp egs.
 
 echo "$0: Finished preparing training examples"

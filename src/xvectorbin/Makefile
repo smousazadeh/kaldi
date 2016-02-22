@@ -6,7 +6,8 @@ include ../kaldi.mk
 LDFLAGS += $(CUDA_LDFLAGS)
 LDLIBS += $(CUDA_LDLIBS)
 
-BINFILES = nnet3-xvector-get-egs
+BINFILES = nnet3-xvector-get-egs nnet3-xvector-compute-prob \
+           nnet3-xvector-show-progress nnet3-xvector-train
 
 OBJFILES =
 
@@ -15,7 +16,7 @@ cuda-compiled.o: ../kaldi.mk
 
 TESTFILES =
 
-ADDLIBS = ../nnet3/kaldi-nnet3.a ../gmm/kaldi-gmm.a \
+ADDLIBS = ../xvector/kaldi-xvector.a ../nnet3/kaldi-nnet3.a ../gmm/kaldi-gmm.a \
          ../decoder/kaldi-decoder.a ../lat/kaldi-lat.a ../hmm/kaldi-hmm.a  \
          ../transform/kaldi-transform.a ../tree/kaldi-tree.a \
          ../thread/kaldi-thread.a ../cudamatrix/kaldi-cudamatrix.a \

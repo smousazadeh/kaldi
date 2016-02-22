@@ -21,11 +21,11 @@ if [ $stage -le 1 ]; then
     if [ -d data/${datadir}_sp ]; then
       echo "$0: directory ${datadir}_sp already exists, skipping creating it."
     else
-      utils/data/perturb_data_dir_speed_3way.sh ${datadir} ${datadir}_sp
-      utils/data/perturb_data_dir_volume.sh ${datadir}_sp
+      utils/data/perturb_data_dir_speed_3way.sh data/${datadir} data/${datadir}_sp
+      utils/data/perturb_data_dir_volume.sh data/${datadir}_sp
     fi
     if [ -f data/${datadir}_sp_hires/feats.scp ]; then
-      echo "$0: directory ${datadir}_sp_hires/feats.scp already exists, skipping creating it."
+      echo "$0: directory data/${datadir}_sp_hires/feats.scp already exists, skipping creating it."
     else
       mfccdir=mfcc
       utils/copy_data_dir.sh data/${datadir}_sp data/${datadir}_sp_hires

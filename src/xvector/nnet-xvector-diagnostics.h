@@ -18,8 +18,8 @@
 // See the Apache 2 License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef KALDI_NNET3_NNET_XVECTOR_DIAGNOSTICS_H_
-#define KALDI_NNET3_NNET_XVECTOR_DIAGNOSTICS_H_
+#ifndef KALDI_XVECTOR_NNET_XVECTOR_DIAGNOSTICS_H_
+#define KALDI_XVECTOR_NNET_XVECTOR_DIAGNOSTICS_H_
 
 #include "nnet3/nnet-example.h"
 #include "nnet3/nnet-computation.h"
@@ -89,4 +89,4 @@ class NnetXvectorComputeProb {
 } // namespace nnet3
 } // namespace kaldi
 
-#endif // KALDI_NNET3_NNET_XVECTOR_DIAGNOSTICS_H_
+#endif // KALDI_XVECTOR_NNET_XVECTOR_DIAGNOSTICS_H_

@@ -49,15 +49,15 @@ static void ProcessRangeFile(const std::string &range_rxfilename,
       ChunkPairInfo *pair = new ChunkPairInfo();
       std::vector<std::string> fields;
       SplitStringToVector(line, " \t\n\r", true, &fields);
-      if (fields.size() != 6)
-        KALDI_ERR << "Expected 6 fields in line of range file, got "
+      if (fields.size() != 7)
+        KALDI_ERR << "Expected 7 fields in line of range file, got "
                   << fields.size() << " instead.";
 
       std::string utt = fields[0],
-                  start_frame1_str = fields[2],
-                  num_frames1_str = fields[3],
-                  start_frame2_str = fields[4],
-                  num_frames2_str = fields[5];
+                  start_frame1_str = fields[3],
+                  num_frames1_str = fields[4],
+                  start_frame2_str = fields[5],
+                  num_frames2_str = fields[6];
 
       if (!ConvertStringToInteger(fields[1], &(pair->output_archive_id))
           || !ConvertStringToInteger(start_frame1_str, &(pair->start_frame1))
@@ -110,8 +110,8 @@ static void WriteExamples(const MatrixBase<BaseFloat> &feats,
                                   pair->num_frames1, 0, feat_dim),
                            chunk2(feats, pair->start_frame2 + shift2,
                                   pair->num_frames2, 0, feat_dim);
-      NnetIo nnet_io1 = NnetIo("input1", 0, chunk1),
-             nnet_io2 = NnetIo("input2", 0, chunk2);
+      NnetIo nnet_io1 = NnetIo("input", 0, chunk1),
+             nnet_io2 = NnetIo("input", 0, chunk2);
       for (std::vector<Index>::iterator indx_it = nnet_io1.indexes.begin();
           indx_it != nnet_io1.indexes.end(); ++indx_it)
         indx_it->n = 0;
@@ -166,11 +166,12 @@ int main(int argc, char *argv[]) {
         "the same utterance.  The location and length of the feature chunks\n"
         "are specified in the 'ranges' file.  Each line is interpreted as\n"
         "follows:\n"
-        "  <source-utterance> <output-archive-index>  <start-frame-index1>"
-        " <num-frames1> <start-frame-index2> <num-frames2>\n"
+        "  <source-utterance> <relative-output-archive-index> "
+        "<output-archive-index>  <start-frame-index1> <num-frames1> "
+        "<start-frame-index2> <num-frames2>\n"
         "For example:\n"
-        "  utt1  3   0   65  112  110\n"
-        "  utt1  0   160 50  214  180\n"
+        "  utt1  3  13  0   65  112  110\n"
+        "  utt1  0  10  160 50  214  180\n"
         "  utt2  ...\n"
         "\n"
         "Usage:  nnet3-xvector-get-egs [options] <ranges-filename> "
