@@ -267,12 +267,17 @@ void GetComputationRequestXvector(const Nnet &nnet,
   }
 
   // We only need the output on frame t=0 for each n.
-  int32 io_index_size = request->inputs[0].indexes.size();
+  int32 io_index_size = request->inputs[0].indexes.size(),
+         n_indx_size = 0;
   std::vector<Index> output_indexes;
-  output_indexes.resize(io_index_size);
-  for (int32 ind = 0; ind < io_index_size; ind++) {
-    output_indexes[ind].n = ind;
-    output_indexes[ind].t = 0;
+  for (int32 indx = 0; indx < io_index_size; indx++)
+    if (request->inputs[0].indexes[indx].t == 0)
+     n_indx_size++;
+
+  output_indexes.resize(n_indx_size);
+  for (int32 indx = 0; indx < n_indx_size; indx++) {
+    output_indexes[indx].n = indx;
+    output_indexes[indx].t = 0;
   }
 
   // In order to generate computation request for output nodes,
