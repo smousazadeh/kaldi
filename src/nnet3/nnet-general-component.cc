@@ -847,7 +847,7 @@ void StatisticsPoolingComponent::Backprop(
     variance_deriv.Scale(0.5);
 
     // the deriv w.r.t. the uncentered variance is the same as w.r.t.  the
-    // uncentered variance (since they difer by a constant term of -(mean *
+    // uncentered variance (since they differ by a constant term of -(mean *
     // mean), but we need to add to dF/dmean, the value -2.0 * mean *
     // dF/dvariance.
     mean_deriv.AddMatMatElements(-2.0, mean_value, variance_deriv, 1.0);

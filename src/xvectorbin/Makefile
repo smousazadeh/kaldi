@@ -6,8 +6,8 @@ include ../kaldi.mk
 LDFLAGS += $(CUDA_LDFLAGS)
 LDLIBS += $(CUDA_LDLIBS)
 
-BINFILES = nnet3-xvector-get-egs nnet3-xvector-train nnet3-xvector-compute-prob \
-           nnet3-xvector-show-progress
+BINFILES = nnet3-xvector-get-egs nnet3-xvector-compute-prob \
+           nnet3-xvector-show-progress nnet3-xvector-train
 
 OBJFILES =
 
