@@ -121,7 +121,7 @@ void NnetXvectorTrainer::ProcessOutputs(NnetComputer *computer) {
         int32 s_dim = xvector_pairs.NumCols() * (xvector_pairs.NumCols() + 1) / 2;
 
         // convert CuVector to CuSpMatrix
-        CuSpMatrix<BaseFloat> xvec_s_sp(s_dim);
+        CuSpMatrix<BaseFloat> xvec_s_sp(xvector_pairs.NumCols());
         xvec_s_sp.CopyFromVec(xvec_s.Row(0));
 
         CuVector<BaseFloat> deriv_s(s_dim);
@@ -129,7 +129,7 @@ void NnetXvectorTrainer::ProcessOutputs(NnetComputer *computer) {
         ComputeXvectorObjfAndDeriv(xvector_pairs, xvec_s_sp, xvec_b_val,
                                    (supply_deriv ? &xvector_deriv : NULL),
                                    (supply_deriv ? &deriv_s : NULL),
-                                   &deriv_b,
+                                   (supply_deriv ? &deriv_b : NULL),
                                    &tot_objf,
                                    &tot_weight);
 
@@ -269,7 +269,12 @@ void GetComputationRequestXvector(const Nnet &nnet,
   // We only need the output on frame t=0 for each n.
   int32 io_index_size = request->inputs[0].indexes.size(),
          n_indx_size = 0;
-  std::vector<Index> output_indexes;
+  std::vector<Index> output_indexes, 
+    affine_output_indexes;
+  affine_output_indexes.resize(1);
+  affine_output_indexes[0].n = 0;
+  affine_output_indexes[0].t = 0;
+
   for (int32 indx = 0; indx < io_index_size; indx++)
     if (request->inputs[0].indexes[indx].t == 0)
      n_indx_size++;
@@ -279,7 +284,7 @@ void GetComputationRequestXvector(const Nnet &nnet,
     output_indexes[indx].n = indx;
     output_indexes[indx].t = 0;
   }
-
+  
   // In order to generate computation request for output nodes,
   // we should find output nodes and add io_spec for each one.
   int32 num_nodes = nnet.NumNodes();
@@ -289,7 +294,11 @@ void GetComputationRequestXvector(const Nnet &nnet,
       dest.resize(dest.size() + 1);
       IoSpecification &io_spec = dest.back();
       io_spec.name = nnet.GetNodeName(node_index);
-      io_spec.indexes = output_indexes;
+      if (nnet.GetNodeName(node_index) == "s" || 
+          nnet.GetNodeName(node_index) == "b") 
+        io_spec.indexes = affine_output_indexes;
+      else
+        io_spec.indexes = output_indexes;
       io_spec.has_deriv = need_model_derivative;
     }
   }
