@@ -134,10 +134,10 @@ while [ $x -lt $num_iters ]; do
     # Use the egs dir from the previous iteration for the diagnostics
     $cmd JOB=1:$num_diagnostic_archives $dir/log/compute_prob_valid.$x.JOB.log \
       nnet3-xvector-compute-prob $dir/$x.raw \
-            "ark:nnet3-xvector-merge-egs ark:$egs_dir/valid_diagnostic_egs.JOB.ark ark:- |" &
+            "ark:nnet3-merge-egs --measure-output-frames=false ark:$egs_dir/valid_diagnostic_egs.JOB.ark ark:- |" &
     $cmd JOB=1:$num_diagnostic_archives $dir/log/compute_prob_train.$x.JOB.log \
       nnet3-xvector-compute-prob $dir/$x.raw \
-           "ark:nnet3-xvector-merge-egs ark:$egs_dir/train_diagnostic_egs.JOB.ark ark:- |" &
+           "ark:nnet3-merge-egs --measure-output-frames=false ark:$egs_dir/train_diagnostic_egs.JOB.ark ark:- |" &
 
     if [ $x -gt 0 ]; then
       $cmd $dir/log/progress.$x.log \
@@ -176,7 +176,7 @@ while [ $x -lt $num_iters ]; do
           nnet3-xvector-train $parallel_train_opts --print-interval=10 \
           --max-param-change=$max_param_change \
          $dir/$x.raw \
-          "ark:nnet3-copy-egs ark:$egs_dir/egs.$archive.ark ark:- | nnet3-shuffle-egs --buffer-size=$shuffle_buffer_size --srand=$x ark:- ark:-| nnet3-xvector-merge-egs --minibatch-size=$minibatch_size --discard-partial-minibatches=true ark:- ark:- |" \
+          "ark:nnet3-copy-egs ark:$egs_dir/egs.$archive.ark ark:- | nnet3-shuffle-egs --buffer-size=$shuffle_buffer_size --srand=$x ark:- ark:-| nnet3-merge-egs --measure-output-frames=false --minibatch-size=$minibatch_size --discard-partial-minibatches=true ark:- ark:- |" \
           $dir/$[$x+1].$n.raw || touch $dir/.error &
       done
       wait
