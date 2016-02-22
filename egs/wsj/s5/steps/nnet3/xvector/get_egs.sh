@@ -161,6 +161,7 @@ echo $num_train_frames >$dir/info/num_frames
 num_train_archives=$[($num_train_frames*$num_repeats)/$frames_per_iter + 1]
 echo "$0: producing $num_train_archives archives for training"
 echo $num_train_archives > $dir/info/num_archives
+echo $num_diagnostic_archives > $dir/info/num_diagnostic_archives
 
 
 if [ $nj -gt $num_train_archives ]; then
