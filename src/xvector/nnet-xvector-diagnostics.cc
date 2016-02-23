@@ -76,11 +76,11 @@ void NnetXvectorComputeProb::Compute(const NnetExample &eg) {
 }
 
 void NnetXvectorComputeProb::ProcessOutputs(NnetComputer *computer) {
-  for (int32 node_index = 0; node_index < nnet_.NumNodes(); node_index++) { 
-    if (nnet_.IsOutputNode(node_index)) { 
+  for (int32 node_index = 0; node_index < nnet_.NumNodes(); node_index++) {
+    if (nnet_.IsOutputNode(node_index)) {
       std::string xvector_name = nnet_.GetNodeName(node_index),
         s_name = "s", b_name = "b";
-      if (nnet_.GetNodeIndex(s_name) == -1 || nnet_.GetNodeIndex(b_name) == -1) 
+      if (nnet_.GetNodeIndex(s_name) == -1 || nnet_.GetNodeIndex(b_name) == -1)
         KALDI_ERR << "The nnet expected to have two output nodes with name s and b.";
 
       if (xvector_name != s_name && xvector_name != b_name) {
@@ -90,11 +90,11 @@ void NnetXvectorComputeProb::ProcessOutputs(NnetComputer *computer) {
         CuMatrix<BaseFloat> xvector_deriv(xvector_pairs.NumRows(), xvector_pairs.NumCols(),
                                           kUndefined);
         int32 s_dim = xvector_pairs.NumCols() * (xvector_pairs.NumCols() + 1) / 2;
-        
-        // convert CuVector to CuSpMatrix 
-        CuSpMatrix<BaseFloat> xvec_s_sp(s_dim);
+
+        // convert CuVector to CuSpMatrix
+        CuSpMatrix<BaseFloat> xvec_s_sp(xvector_pairs.NumCols());
         xvec_s_sp.CopyFromVec(xvec_s.Row(0));
-        
+
         CuVector<BaseFloat> deriv_s(s_dim);
         BaseFloat xvec_b_val = xvec_b(0,0), deriv_b;
         BaseFloat tot_weight, tot_objf;
@@ -102,7 +102,7 @@ void NnetXvectorComputeProb::ProcessOutputs(NnetComputer *computer) {
         ComputeXvectorObjfAndDeriv(xvector_pairs, xvec_s_sp, xvec_b_val,
                                    (supply_deriv ? &xvector_deriv : NULL),
                                    (supply_deriv ? &deriv_s : NULL),
-                                   &deriv_b,
+                                   (supply_deriv ? &deriv_b : NULL),
                                    &tot_objf,
                                    &tot_weight);
         if (supply_deriv) {
