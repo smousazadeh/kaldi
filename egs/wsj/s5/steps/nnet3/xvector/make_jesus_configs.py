@@ -271,7 +271,7 @@ for l in range(1, num_hidden_layers + 1):
         # just have an affine component for the first hidden layer.
         # we don't need a nonlinearity as there is one at the input of
         # the jesus component.
-        print('component name=x-affine1 type=AffineComponent '
+        print('component name=x-affine1 type=NaturalGradientAffineComponent '
               'input-dim={0} output-dim={1} bias-stddev=0'.format(
                 cur_dim, args.jesus_input_dim), file=f)
         print('component-node name=x-affine1 component=x-affine1 input={0}'.format(
