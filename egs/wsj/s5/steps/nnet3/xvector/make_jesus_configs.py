@@ -58,14 +58,14 @@ parser.add_argument("--num-jesus-blocks", type=int,
                     default=100);
 parser.add_argument("--jesus-stddev-scale", type=float,
                     help="Scaling factor on parameter stddev of Jesus layer (smaller->jesus layer learns faster)",
-                    default=0.2)
+                    default=1.0)
 parser.add_argument("--output-dim", type=int,
                     help="Dimension of output vector");
 parser.add_argument("--output-scale", type=float, default=0.25,
                     help="Scaling factor on the regular output (used to control learning rates and instability)");
-parser.add_argument("--s-scale", type=float, default=0.05,
+parser.add_argument("--s-scale", type=float, default=0.2,
                     help="Scaling factor on output 's' (s is a symmetric matrix used for scoring); similar in purpose to --output-scale");
-parser.add_argument("--b-scale", type=float, default=0.01,
+parser.add_argument("--b-scale", type=float, default=0.2,
                     help="Scaling factor on output 'b' (b is a scalar offset used in scoring); similar in purpose to --output-scale")
 parser.add_argument("config_out",
                     help="Filename for the config file to be written to");

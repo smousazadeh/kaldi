@@ -10,9 +10,6 @@ stage=3
 train_stage=-10
 generate_alignments=true # false if doing ctc training
 speed_perturb=true
-init_lr=0.003
-final_lr=0.0003
-max_change=2.0
 use_gpu=true
 feat_dim=40 # this is the MFCC dim we use in the hires features.  you can't change it
             # unless you change local/xvector/prepare_perturbed_data.sh to use a different
@@ -43,8 +40,7 @@ if [ $stage -le 3 ]; then
       --jesus-input-dim 300 --jesus-output-dim 1000 --jesus-hidden-dim 2000 \
       $xvector_dir/nnet.config
 fi
-
-if [ $stage -le 4 ]; then
+if [ $stage -le 4 ] && false; then
   # dump egs.
   if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d $dir/egs/storage ]; then
     utils/create_split_dir.pl \
@@ -59,9 +55,7 @@ if [ $stage -le 5 ]; then
   # times (3 different frame-shifts of the same eg are counted as different).
   steps/nnet3/xvector/train.sh --cmd "$train_cmd" \
       --num-epochs 4 --num-shifts 3 --use-gpu $use_gpu --stage $train_stage \
-      --initial-effective-lrate $init_lr --final-effective-lrate $final_lr \
       --num-jobs-initial 1 --num-jobs-final 8 \
-      --max-param-change $max_change \
       --egs-dir $egs_dir \
       $xvector_dir
 fi
