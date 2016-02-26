@@ -26,6 +26,7 @@ void ComputeXvectorObjfAndDeriv(
     const CuSpMatrix<BaseFloat> &S,
     BaseFloat b, CuMatrixBase<BaseFloat> *deriv_xvector,
     CuVector<BaseFloat> *deriv_S, BaseFloat *deriv_b,
+    CuMatrixBase<BaseFloat> *scores_out,
     BaseFloat *tot_objf,
     BaseFloat *tot_weight) {
 
@@ -40,10 +41,10 @@ void ComputeXvectorObjfAndDeriv(
     KALDI_ASSERT(deriv_xvector->NumCols() == xvector_dim);
     KALDI_ASSERT(deriv_xvector->NumRows() == N);
     KALDI_ASSERT(deriv_S->Dim() == S_dim);
-    deriv_xvector->Set(0.0);
-    deriv_S->Set(0.0);
-    (*deriv_b) = 0.0;
+    deriv_xvector->SetZero();
+    deriv_S->SetZero();
   }
+
 
   CuMatrix<BaseFloat> S_tmp(S),
                       P(N, xvector_dim),
@@ -64,6 +65,11 @@ void ComputeXvectorObjfAndDeriv(
   scores.AddMat(-1.0, R, kTrans);
   scores.AddMat(-1.0, R, kNoTrans);
   scores.Add(b);
+  if (scores_out != NULL) {
+    KALDI_ASSERT(scores_out->NumCols() == scores.NumCols()
+                 && scores_out->NumRows() == scores.NumRows());
+    scores_out->CopyFromMat(scores);
+  }
 
   cu::ComputeXvectorObjfFromScores(scores, &objf_terms, &scores_deriv);
   CuVector<BaseFloat> objf_terms_vec(N);

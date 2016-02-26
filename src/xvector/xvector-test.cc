@@ -58,7 +58,7 @@ bool TestXvectorExtractorDerivative(BaseFloat perturb_delta) {
   CuVector<BaseFloat> deriv_S(S_dim, kSetZero);
   xvector_pairs.SetRandn();
   ComputeXvectorObjfAndDeriv(xvector_pairs, S, b, &deriv_xvector,
-    &deriv_S, &deriv_b, &tot_objf, &tot_weight);
+    &deriv_S, &deriv_b, NULL, &tot_objf, &tot_weight);
   CuVector<BaseFloat> deriv_xvector_vec(xvector_dim);
 
   // Sum over the derivatives for xvector input.
@@ -80,9 +80,9 @@ bool TestXvectorExtractorDerivative(BaseFloat perturb_delta) {
     BaseFloat tot_objf_p,
         tot_objf_n;
     ComputeXvectorObjfAndDeriv(xvector_pairs_p, S, b, NULL,
-      NULL, NULL, &tot_objf_p, &tot_weight);
+      NULL, NULL, NULL, &tot_objf_p, &tot_weight);
     ComputeXvectorObjfAndDeriv(xvector_pairs_n, S, b, NULL,
-      NULL, NULL, &tot_objf_n, &tot_weight);
+      NULL, NULL, NULL, &tot_objf_n, &tot_weight);
     BaseFloat delta = (tot_objf_p  - tot_objf_n)
       * 1.0 / (2.0 * perturb_delta);
     l2_xvector += pow(deriv_xvector_vec(i) - delta, 2);
@@ -100,9 +100,9 @@ bool TestXvectorExtractorDerivative(BaseFloat perturb_delta) {
     BaseFloat tot_objf_p,
               tot_objf_n;
     ComputeXvectorObjfAndDeriv(xvector_pairs, S_p, b, NULL,
-      NULL, NULL, &tot_objf_p, &tot_weight);
+      NULL, NULL, NULL, &tot_objf_p, &tot_weight);
     ComputeXvectorObjfAndDeriv(xvector_pairs, S_n, b, NULL,
-      NULL, NULL, &tot_objf_n, &tot_weight);
+      NULL, NULL, NULL, &tot_objf_n, &tot_weight);
     BaseFloat delta = (tot_objf_p  - tot_objf_n)
       * 1.0 / (2.0 * perturb_delta);
     l2_S += pow(deriv_S(i) - delta, 2);
@@ -115,9 +115,9 @@ bool TestXvectorExtractorDerivative(BaseFloat perturb_delta) {
   BaseFloat tot_objf_p;
   BaseFloat tot_objf_n;
   ComputeXvectorObjfAndDeriv(xvector_pairs, S, b_p, NULL,
-    NULL, NULL, &tot_objf_p, &tot_weight);
+    NULL, NULL, NULL, &tot_objf_p, &tot_weight);
   ComputeXvectorObjfAndDeriv(xvector_pairs, S, b_n, NULL,
-    NULL, NULL, &tot_objf_n, &tot_weight);
+    NULL, NULL, NULL, &tot_objf_n, &tot_weight);
   BaseFloat delta = (tot_objf_p  - tot_objf_n)
                     * 1.0 / (2.0 * perturb_delta);
   l2_b = pow(deriv_b - delta, 2);
@@ -151,7 +151,7 @@ bool TestXvectorComputeObjf() {
   xvector_pairs.SetRandn();
 
   ComputeXvectorObjfAndDeriv(xvector_pairs, S, b, &deriv_xvector,
-    &deriv_S, &deriv_b, &tot_objf, &tot_weight);
+    &deriv_S, &deriv_b, NULL, &tot_objf, &tot_weight);
   TestComputeXvectorObjfAndDeriv(xvector_pairs, S, b, &deriv_xvector_test,
     &deriv_S_test, &deriv_b_test, &tot_objf_test, &tot_weight_test);
 
