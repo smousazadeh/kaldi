@@ -146,10 +146,10 @@ while [ $x -lt $num_iters ]; do
     if [ $[$x%$diagnostic_period] == 0 ]; then
       # Set off jobs doing some diagnostics, in the background.
       $cmd JOB=1:$num_diagnostic_archives $dir/log/compute_prob_valid.$x.JOB.log \
-        nnet3-xvector-compute-prob $dir/$x.raw \
+        nnet3-xvector-compute-prob --compute-accuracy=true $dir/$x.raw \
         "ark:nnet3-merge-egs --measure-output-frames=false ark:$egs_dir/valid_diagnostic_egs.JOB.ark ark:- |" &
       $cmd JOB=1:$num_diagnostic_archives $dir/log/compute_prob_train.$x.JOB.log \
-        nnet3-xvector-compute-prob $dir/$x.raw \
+        nnet3-xvector-compute-prob --compute-accuracy=true $dir/$x.raw \
         "ark:nnet3-merge-egs --measure-output-frames=false ark:$egs_dir/train_diagnostic_egs.JOB.ark ark:- |" &
     fi
     if [ $x -gt 0 ]; then
