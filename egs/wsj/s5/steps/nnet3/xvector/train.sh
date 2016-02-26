@@ -129,15 +129,6 @@ while [ $x -lt $num_iters ]; do
   ilr=$initial_effective_lrate; flr=$final_effective_lrate; np=$num_archives_processed; nt=$num_archives_to_process;
   this_effective_learning_rate=$(perl -e "print ($x + 1 >= $num_iters ? $flr : $ilr*exp($np*log($flr/$ilr)/$nt));");
   this_learning_rate=$(perl -e "print ($this_effective_learning_rate*$this_num_jobs);");
-  this_max_param_change=$max_param_change
-  this_minibatch_size=$minibatch_size
-
-  if [ $x -lt $[$num_archives*$num_shifts] ]; then
-    # if we're the first epoch, use half the minibatch size and half the
-    # max-param-change.
-    this_minibatch_size=$[$minibatch_size/2]
-    this_max_param_change=$(perl -e "print ($max_param_change / 2.0);")
-  fi
 
   if [ $stage -le $x ]; then
     echo "On iteration $x, learning rate is $this_learning_rate"
@@ -184,6 +175,15 @@ while [ $x -lt $num_iters ]; do
                                                # the other indexes from.
         archive=$[($k%$num_archives)+1]; # work out the 1-based archive index.
         frame_shift=$[($k/$num_archives)%$num_shifts];
+
+        this_max_param_change=$max_param_change
+        this_minibatch_size=$minibatch_size
+        if [ $k -lt $[$num_archives*$num_shifts] ]; then
+          # if we're the first epoch, use half the minibatch size and half the
+          # max-param-change.
+          this_minibatch_size=$[$minibatch_size/2]
+          this_max_param_change=$(perl -e "print ($max_param_change / 2.0);")
+        fi
 
         $cmd $train_queue_opt $dir/log/train.$x.$n.log \
           nnet3-xvector-train $parallel_train_opts --print-interval=10 \
