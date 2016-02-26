@@ -191,12 +191,23 @@ bool SelectFromExample(const NnetExample &eg,
                        int32 right_context,
                        int32 frame_shift,
                        NnetExample *eg_out) {
+  // If only the frame-shift was specified, handle it as a special case.
+  if (frame_str == "" && left_context == -1 &&
+      right_context == -1) {
+    // only a frame-shift is needed.
+    *eg_out = eg;
+    std::vector<std::string> exclude_names;  // we can later make this
+    exclude_names.push_back(std::string("ivector")); // configurable.
+    ShiftExampleTimes(frame_shift, exclude_names, eg_out);
+    return true;
+  }
   int32 min_input_t, max_input_t,
       min_output_t, max_output_t;
   if (!ContainsSingleExample(eg, &min_input_t, &max_input_t,
-                             &min_output_t, &max_output_t))
+                             &min_output_t, &max_output_t)) {
     KALDI_ERR << "Too late to perform frame selection/context reduction on "
               << "these examples (already merged?)";
+  }
   if (frame_str != "") {
     // select one frame.
     if (frame_str == "random") {
