@@ -178,7 +178,9 @@ while [ $x -lt $num_iters ]; do
 
         this_max_param_change=$max_param_change
         this_minibatch_size=$minibatch_size
-        if [ $k -lt $[$num_archives*$num_shifts] ]; then
+        # for the first 20 iterations or the first epoch, whichever comes earlier,
+        # use a smaller minibatch size and max-param-change.
+        if [ $k -lt $[$num_archives*$num_shifts] ] && [ $x -lt 20 ]; then
           # if we're the first epoch, use half the minibatch size and half the
           # max-param-change.
           this_minibatch_size=$[$minibatch_size/2]
