@@ -192,6 +192,10 @@ while [ $x -lt $num_iters ]; do
           $dir/$[$x+1].$n.raw || touch $dir/.error &
       done
       wait
+      if [ -f $dir/.error ]; then
+        echo "$0: error detected on iteration $x of training"
+        exit 1
+      fi
     )
     # the error message below is not that informative, but $cmd will
     # have printed a more specific one.
