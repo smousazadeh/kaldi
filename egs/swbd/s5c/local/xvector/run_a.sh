@@ -24,7 +24,6 @@ xvector_dir=exp/xvector_a
 egs_dir=exp/xvector_a/egs
 
 
-
 . ./path.sh
 . ./cmd.sh
 . ./utils/parse_options.sh
@@ -38,7 +37,7 @@ if [ $stage -le 3 ]; then
 
   $train_cmd $xvector_dir/log/make_configs.log \
     steps/nnet3/xvector/make_jesus_configs.py \
-      --splice-indexes="-1,0,1 -2,-1,0,1 -3,0,3 mean+stddev+count(-99:3:9:0) 0" \
+      --splice-indexes="-1,0,1 -2,-1,0,1 -3,0,3 -3,0,3 mean+stddev+count(-99:3:9:0) 0" \
       --feat-dim $feat_dim --output-dim $xvector_dim \
       --num-jesus-blocks 100 \
       --jesus-input-dim 300 --jesus-output-dim 1000 --jesus-hidden-dim 2000 \

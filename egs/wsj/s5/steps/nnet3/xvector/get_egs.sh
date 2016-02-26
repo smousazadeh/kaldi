@@ -27,10 +27,10 @@ cmd=run.pl
 # excessive recompilation of computation graphs).
 min_frames_per_chunk=50
 max_frames_per_chunk=300
-frames_per_iter=1000000 # have this many frames per archive.
+frames_per_iter=10000000 # have this many frames per archive.
 
-frames_per_iter_diagnostic=100000 # have this many frames per archive for
-                                  # the archives used for diagnostics.
+frames_per_iter_diagnostic=1000000 # have this many frames per archive for
+                                   # the archives used for diagnostics.
 
 num_diagnostic_archives=3  # we want to test the training and validation likelihoods
                            # on a range of utterance lengths, and this number controls
@@ -141,7 +141,7 @@ if [ $stage -le 1 ]; then
   utils/filter_scp.pl $temp/train_subset_uttlist <$temp/utt2len > $temp/utt2len.train_subset
 fi
 
-# TODO: Currently just supporting raw features
+# Just supporting raw features.
 feats="scp,s,cs:utils/filter_scp.pl $temp/ranges.JOB $data/feats.scp |"
 valid_feats="scp,s,cs:utils/filter_scp.pl $temp/valid_uttlist $data/feats.scp |"
 train_subset_feats="scp,s,cs:utils/filter_scp.pl $temp/train_subset_uttlist $data/feats.scp |"
@@ -212,23 +212,28 @@ fi
 
 if [ $stage -le 4 ]; then
   echo "$0: Generating training examples on disk"
+  rm $dir/.error 2>/dev/null
   for g in $(seq $nj); do
     outputs=`awk '{for(i=1;i<=NF;i++)printf("ark:%s ",$i);}' $temp/outputs.$g`
     $cmd $dir/log/train_create_examples.$g.log \
       nnet3-xvector-get-egs $temp/ranges.$g \
-      "`echo $feats | sed s/JOB/$g/g`" $outputs || exit 1 &
+      "`echo $feats | sed s/JOB/$g/g`" $outputs || touch $dir/.error &
   done
-  wait
   train_subset_outputs=`awk '{for(i=1;i<=NF;i++)printf("ark:%s ",$i);}' $temp/train_subset_outputs.1`
   echo "$0: Generating training subset examples on disk"
   $cmd $dir/log/train_subset_create_examples.1.log \
     nnet3-xvector-get-egs $temp/train_subset_ranges.1 \
-    "$train_subset_feats" $train_subset_outputs || exit 1
+    "$train_subset_feats" $train_subset_outputs || touch $dir/.error &
   valid_outputs=`awk '{for(i=1;i<=NF;i++)printf("ark:%s ",$i);}' $temp/valid_outputs.1`
   echo "$0: Generating validation examples on disk"
   $cmd $dir/log/valid_create_examples.1.log \
     nnet3-xvector-get-egs $temp/valid_ranges.1 \
-    "$valid_feats" $valid_outputs || exit 1
+    "$valid_feats" $valid_outputs || touch $dir/.error &
+  wait
+  if [ -f $dir/.error ]; then
+    echo "$0: problem detected while dumping examples"
+    exit 1
+  fi
 fi
 
 if [ $stage -le 5 ]; then
@@ -243,7 +248,6 @@ if [ $stage -le 5 ]; then
 fi
 
 if [ $stage -le 6 ]; then
-
    for file in $(for x in $(seq $num_diagnostic_archives); do echo $dir/{valid,train_subset}_egs_temp.$x.ark; done) \
             $(for x in $(seq $num_train_archives); do echo $dir/egs_temp.$x.ark; done); do
      [ -L $file ] && rm $(readlink -f $file)

@@ -219,11 +219,12 @@ if info_f is None:
 for archive_index in range(args.num_archives):
     print("Processing archive {0}".format(archive_index + 1))
     if args.randomize_chunk_length == "true":
-      length1 = RandomChunkLength();
-      length2 = length1
+        # don't constrain the lengths to be the same
+        length1 = RandomChunkLength();
+        length2 = RandomChunkLength();
     else:
-      length1 = DeterministicChunkLength(archive_index);
-      length2 = length1
+        length1 = DeterministicChunkLength(archive_index);
+        length2 = length1
     print("{0} {1} {2}".format(archive_index + 1, length1, length2), file=info_f)
     archive_chunk_lengths.append( (length1, length2) )
     tot_length = length1 + length2

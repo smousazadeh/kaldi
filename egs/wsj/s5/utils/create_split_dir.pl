@@ -53,6 +53,7 @@ foreach my $file (@ARGV) {
   # If the symbolic link already exists, delete it.
   if (-l $pseudo_storage) {
     print STDERR "$0: link $pseudo_storage already exists, not overwriting.\n";
+    $index++;
     next;
   }
 
@@ -65,7 +66,6 @@ foreach my $file (@ARGV) {
   if (! $ret) {
     print STDERR "Error linking $actual_storage to $pseudo_storage\n";
   }
-
   $index++;
 }
 
