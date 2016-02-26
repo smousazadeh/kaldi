@@ -127,11 +127,11 @@ void NnetXvectorComputeProb::ProcessOutputs(NnetComputer *computer) {
         totals.tot_weight += tot_weight;
         totals.tot_objective += tot_objf;
         if (compute_accuracy) {
-          BaseFloat tot_acc, tot_weight_acc;
+          BaseFloat tot_acc;
           SimpleObjectiveInfo &acc_totals = acc_info_[xvector_name];
-          ComputeAccuracy(raw_scores, &tot_weight_acc, &tot_acc);
-          acc_totals.tot_objective += tot_weight_acc * tot_acc;
-          acc_totals.tot_weight += tot_weight_acc;
+          ComputeAccuracy(raw_scores, &tot_acc);
+          acc_totals.tot_objective += tot_weight * tot_acc;
+          acc_totals.tot_weight += tot_weight;
         }
       }
       num_minibatches_processed_++;
@@ -155,8 +155,8 @@ bool NnetXvectorComputeProb::PrintTotalStats() const {
       KALDI_LOG << "Overall "
                 << (obj_type == kLinear ? "log-likelihood" : "objective")
                 << " for '" << name << "' is "
-                << (info.tot_objective / info.tot_weight) << " per frame"
-                << ", over " << info.tot_weight << " frames.";
+                << (info.tot_objective / info.tot_weight) << " per chunk"
+                << ", over " << info.tot_weight << " chunks.";
       if (info.tot_weight > 0)
         ans = true;
     }
@@ -178,10 +178,9 @@ bool NnetXvectorComputeProb::PrintTotalStats() const {
 
 void NnetXvectorComputeProb::ComputeAccuracy(
     const CuMatrixBase<BaseFloat> &raw_scores,
-    BaseFloat *tot_weight_out,
     BaseFloat *tot_accuracy_out) {
-  int32 num_rows = raw_scores.NumCols();
-  BaseFloat K = 1.0 / (num_rows - 2),
+  int32 num_rows = raw_scores.NumRows();
+  BaseFloat K = 1.0 / (num_rows - 2.0),
             threshold = 0; // Corresponds to prob_same(u,v) = 0.5.
   BaseFloat count = 0,
         error = 0;
@@ -198,8 +197,7 @@ void NnetXvectorComputeProb::ComputeAccuracy(
       }
     }
   }
-  (*tot_accuracy_out) = 1.0 - static_cast<BaseFloat>(error) / count;
-  (*tot_weight_out) = count;
+  (*tot_accuracy_out) = 1.0 - error / count;
 }
 
 const SimpleObjectiveInfo* NnetXvectorComputeProb::GetObjective(

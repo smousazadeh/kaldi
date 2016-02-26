@@ -73,7 +73,6 @@ class NnetXvectorComputeProb {
   void ProcessOutputs(NnetComputer *computer);
   // Computes the accuracy for this minibatch.
   void ComputeAccuracy(const CuMatrixBase<BaseFloat> &raw_scores,
-                       BaseFloat *tot_weight_out,
                        BaseFloat *tot_accuracy_out);
   NnetComputeProbOptions config_;
   const Nnet &nnet_;
