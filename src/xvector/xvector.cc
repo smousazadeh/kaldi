@@ -51,8 +51,8 @@ void ComputeXvectorObjfAndDeriv(
                       R(N, N),
                       scores(N, N),                 // The raw scores.
                       objf_terms(N, N, kUndefined),
-                      objf_deriv_terms(N, N,        // Derivative of the
-                                       kUndefined); // objf w.r.t. the scores.
+                      scores_deriv(N, N,        // Derivative of the
+                                   kUndefined); // objf w.r.t. the scores.
   CuVector<BaseFloat> r(N);
 
   P.AddMatMat(1.0, xvector_pairs, kNoTrans, S_tmp, kNoTrans, 0.0);
@@ -65,49 +65,46 @@ void ComputeXvectorObjfAndDeriv(
   scores.AddMat(-1.0, R, kNoTrans);
   scores.Add(b);
 
-  cu::ComputeXvectorObjfFromScores(scores, &objf_terms, &objf_deriv_terms);
+  cu::ComputeXvectorObjfFromScores(scores, &objf_terms, &scores_deriv);
   CuVector<BaseFloat> objf_terms_vec(N);
   objf_terms_vec.AddRowSumMat(1.0, objf_terms);
   (*tot_objf) = objf_terms_vec.Sum();
 
   if (deriv_xvector != NULL) {
-    // Some vector and matrix quantities for computing the
-    // derivatives.
-    CuMatrix<BaseFloat> objf_deriv_terms_trans(objf_deriv_terms, kTrans),
-             S_deriv_part(N, xvector_dim),
-             S_deriv(xvector_dim, xvector_dim);
-    CuVector<BaseFloat> cvec_rows(N),
-                        cvec_cols(N);
-    cvec_rows.AddRowSumMat(1.0, objf_deriv_terms, 1.0);
-    cvec_cols.AddRowSumMat(1.0, objf_deriv_terms_trans, 1.0);
-    CuVector<BaseFloat> cvec(cvec_rows);
-    cvec.AddVec(1.0, cvec_cols, 1.0);
+    // compute the derivatives of tot_objf w.r.t the inputs.
+    CuMatrix<BaseFloat> scores_deriv_plus_trans(scores_deriv, kTrans);
+    scores_deriv_plus_trans.AddMat(1.0, scores_deriv, kNoTrans);
+    CuVector<BaseFloat> r_deriv(N);
+    r_deriv.AddRowSumMat(-1.0, scores_deriv_plus_trans, 0.0);
 
     // Compute derivative of the objf with respect to the xvectors.
-    CuMatrix<BaseFloat> SX(N, xvector_dim);
-    SX.AddMatMat(1.0, xvector_pairs, kNoTrans, S_tmp, kNoTrans, 0.0);
-    deriv_xvector->AddDiagVecMat(-1.0, cvec_rows, xvector_pairs,
-                                 kNoTrans, 0.0);
-    deriv_xvector->AddMatMat(-1.0, objf_deriv_terms, kTrans,
+    deriv_xvector->AddDiagVecMat(2.0, r_deriv, P, kNoTrans, 0.0);
+    deriv_xvector->AddMatMat(1.0, scores_deriv_plus_trans, kNoTrans,
                              xvector_pairs, kNoTrans, 1.0);
-    deriv_xvector->AddDiagVecMat(2.0, cvec_cols, SX,
-                                kNoTrans, 1.0);
-    deriv_xvector->AddMatMat(2.0, objf_deriv_terms, kNoTrans,
-                             SX, kNoTrans, 1.0);
 
-    // Compute derivative of the objf with respect to the symmetric matrix
-    // S.
-    S_deriv_part.AddDiagVecMat(2.0, cvec, xvector_pairs,
-                              kNoTrans, 0.0);
-    S_deriv.AddMatMat(1.0, xvector_pairs, kTrans, S_deriv_part,
-                      kNoTrans, 1.0);
-    CuSpMatrix<BaseFloat> S_deriv_tmp(S_deriv);
-    S_deriv_tmp.ScaleDiag(0.5);
-    deriv_S->CopyFromVec(CuSubVector<BaseFloat>(S_deriv_tmp.Data(),
-                            S_dim));
+    // Compute derivative of the objf with respect to the symmetric matrix S:
+    // S_deriv += xvector_pairs' * diag(r_deriv) * xvector_pairs
+    CuMatrix<BaseFloat> S_deriv_mat(xvector_dim, xvector_dim);
+    // we don't need P any more so re-use it temporarily
+    // rderiv_xvector_pairs is the product of diag(r_deriv) times xvector_pairs.
+    CuMatrix<BaseFloat> &rderiv_xvector_pairs(P);
+    rderiv_xvector_pairs.AddDiagVecMat(1.0, r_deriv, xvector_pairs, kNoTrans, 0.0);
+    S_deriv_mat.AddMatMat(1.0, xvector_pairs, kTrans, rderiv_xvector_pairs, kNoTrans, 0.0);
+    CuSpMatrix<BaseFloat> S_deriv_sp(xvector_dim);
+    S_deriv_sp.CopyFromMat(S_deriv_mat, kTakeLower);
+
+    // at this point S_deriv_sp represents the deriv w.r.t. S represented as a
+    // symmetric matrix; but we need the deriv w.r.t. S represented as a packed
+    // vector, which is a little different because each off-diagonal element is
+    // only represented once in the packed vector.  This means we need
+    // to scale the off-diag elements by 2.
+    S_deriv_sp.Scale(2.0);
+    S_deriv_sp.ScaleDiag(0.5);
+    deriv_S->CopyFromVec(CuSubVector<BaseFloat>(S_deriv_sp.Data(),
+                                                S_dim));
 
     // Compute derivative of objf with respect to the scalar offset b.
-    (*deriv_b) = -objf_deriv_terms.Sum();
+    (*deriv_b) = scores_deriv.Sum();
   }
   (*tot_weight) = N;
 }

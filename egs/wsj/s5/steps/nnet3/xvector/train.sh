@@ -26,8 +26,10 @@ shuffle_buffer_size=1000 # This "buffer_size" variable controls randomization of
                 # since in the preconditioning method, 2 samples in the same minibatch can
                 # affect each others' gradients.
 
-max_param_change=0.5  # max param change per minibatch
-minibatch_size=256 # number of pairs of examples to process each minibatch
+max_param_change=0.2  # max param change per minibatch to use eventually
+                      # (for first epoch we use half this)
+minibatch_size=256   # minibatch size to use eventually
+                     # (for first epoch we use half this)
 
 use_gpu=true    # if true, we run on GPU.
 egs_dir=
@@ -127,6 +129,15 @@ while [ $x -lt $num_iters ]; do
   ilr=$initial_effective_lrate; flr=$final_effective_lrate; np=$num_archives_processed; nt=$num_archives_to_process;
   this_effective_learning_rate=$(perl -e "print ($x + 1 >= $num_iters ? $flr : $ilr*exp($np*log($flr/$ilr)/$nt));");
   this_learning_rate=$(perl -e "print ($this_effective_learning_rate*$this_num_jobs);");
+  this_max_param_change=$max_param_change
+  this_minibatch_size=$minibatch_size
+
+  if [ $x -lt $[$num_archives*$num_shifts] ]; then
+    # if we're the first epoch, use half the minibatch size and half the
+    # max-param-change.
+    this_minibatch_size=$[$minibatch_size/2]
+    this_max_param_change=$(perl -e "print ($max_param_change / 2.0);")
+  fi
 
   if [ $stage -le $x ]; then
     echo "On iteration $x, learning rate is $this_learning_rate"
@@ -176,8 +187,8 @@ while [ $x -lt $num_iters ]; do
 
         $cmd $train_queue_opt $dir/log/train.$x.$n.log \
           nnet3-xvector-train $parallel_train_opts --print-interval=10 \
-          --max-param-change=$max_param_change "$raw" \
-          "ark:nnet3-copy-egs --frame-shift=$frame_shift ark:$egs_dir/egs.$archive.ark ark:- | nnet3-shuffle-egs --buffer-size=$shuffle_buffer_size --srand=$x ark:- ark:-| nnet3-merge-egs --measure-output-frames=false --minibatch-size=$minibatch_size --discard-partial-minibatches=true ark:- ark:- |" \
+          --max-param-change=$this_max_param_change "$raw" \
+          "ark:nnet3-copy-egs --frame-shift=$frame_shift ark:$egs_dir/egs.$archive.ark ark:- | nnet3-shuffle-egs --buffer-size=$shuffle_buffer_size --srand=$x ark:- ark:-| nnet3-merge-egs --measure-output-frames=false --minibatch-size=$this_minibatch_size --discard-partial-minibatches=true ark:- ark:- |" \
           $dir/$[$x+1].$n.raw || touch $dir/.error &
       done
       wait

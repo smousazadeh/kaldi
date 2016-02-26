@@ -43,6 +43,7 @@ bool TestXvectorExtractorDerivative(BaseFloat perturb_delta) {
   int32 xvector_dim = RandInt(4, 100),
         num_rows = 2 * RandInt(2, 10); // The number of rows must be even
                                        // and greater than 2.
+  int32 num_rows_subset = RandInt(1, num_rows);
   CuSpMatrix<BaseFloat> S(xvector_dim);
   S.SetRandn();
   // Necessary to keep the similarity scores from getting too large or small.
@@ -61,7 +62,8 @@ bool TestXvectorExtractorDerivative(BaseFloat perturb_delta) {
   CuVector<BaseFloat> deriv_xvector_vec(xvector_dim);
 
   // Sum over the derivatives for xvector input.
-  deriv_xvector_vec.AddRowSumMat(1.0, deriv_xvector, 0.0);
+  deriv_xvector_vec.AddRowSumMat(1.0, deriv_xvector.RowRange(0, num_rows_subset),
+                                 0.0);
   BaseFloat l2_xvector = 0,
             l2_S = 0,
             l2_b = 0;
@@ -71,12 +73,12 @@ bool TestXvectorExtractorDerivative(BaseFloat perturb_delta) {
   for (int32 i = 0; i < xvector_dim; i++) {
     CuMatrix<BaseFloat> xvector_pairs_p(xvector_pairs);
     CuMatrix<BaseFloat> xvector_pairs_n(xvector_pairs);
-    for (int32 j = 0; j < num_rows; j++) {
+    for (int32 j = 0; j < num_rows_subset; j++) {
       xvector_pairs_p(j, i) += perturb_delta;
       xvector_pairs_n(j, i) += -perturb_delta;
     }
     BaseFloat tot_objf_p,
-              tot_objf_n;
+        tot_objf_n;
     ComputeXvectorObjfAndDeriv(xvector_pairs_p, S, b, NULL,
       NULL, NULL, &tot_objf_p, &tot_weight);
     ComputeXvectorObjfAndDeriv(xvector_pairs_n, S, b, NULL,
@@ -127,7 +129,7 @@ bool TestXvectorExtractorDerivative(BaseFloat perturb_delta) {
 
 bool TestXvectorComputeObjf() {
   int32 xvector_dim = RandInt(4, 100),
-        num_rows = 2 * RandInt(2, 10); // The number of rows must be even
+      num_rows = 2 * RandInt(2, 10); // The number of rows must be even
                                        // and greater than 2.
   CuSpMatrix<BaseFloat> S(xvector_dim);
   S.SetRandn();
@@ -157,6 +159,7 @@ bool TestXvectorComputeObjf() {
   deriv_xvector_vec.AddRowSumMat(1.0, deriv_xvector, 0.0);
   CuVector<BaseFloat> deriv_xvector_vec_test(xvector_dim);
   deriv_xvector_vec_test.AddRowSumMat(1.0, deriv_xvector_test, 0.0);
+  KALDI_ASSERT(deriv_xvector.ApproxEqual(deriv_xvector_test, 0.01));
 
   // Verify that the objfs are the same.
   KALDI_ASSERT(ApproxEqual(tot_objf, tot_objf_test, 0.001));

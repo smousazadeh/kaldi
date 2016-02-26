@@ -38,8 +38,8 @@ parser.add_argument("--splice-indexes", type=str,
 parser.add_argument("--feat-dim", type=int,
                     help="Raw feature dimension, e.g. 13")
 parser.add_argument("--self-repair-scale", type=float,
-                    help="Small scale involved in fixing derivatives, if supplied (e.g. try 0.00001)",
-                    default=0.00001)
+                    help="Small scale involved in preventing inputs to nonlinearities getting out of range",
+                    default=0.00002)
 parser.add_argument("--jesus-hidden-dim", type=int,
                     help="hidden dimension of Jesus layer.", default=3500)
 parser.add_argument("--jesus-output-dim", type=int,

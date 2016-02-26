@@ -210,7 +210,8 @@ void ComputeXvectorObjfFromScores(const CuMatrixBase<BaseFloat> &scores,
                                   CuMatrixBase<BaseFloat> *objf_terms,
                                   CuMatrixBase<BaseFloat> *objf_derivs) {
   KALDI_ASSERT(SameDim(*objf_terms, *objf_derivs)
-               && SameDim(*objf_terms, scores));
+               && SameDim(*objf_terms, scores) &&
+               scores.NumRows() == scores.NumCols());
   #if HAVE_CUDA == 1
   if (CuDevice::Instantiate().Enabled()) {
     Timer tim;
@@ -235,10 +236,10 @@ void ComputeXvectorObjfFromScores(const CuMatrixBase<BaseFloat> &scores,
         BaseFloat L = scores(i, j);
         if (i + 1 == j && i % 2 == 0) {
           (*objf_terms)(i, j) = L < -15 ? L : -log(1.0 + exp(-L));
-          (*objf_derivs)(i, j) = -1.0 / (1.0 + exp(L));
+          (*objf_derivs)(i, j) = L > 15 ? 0.0 : 1.0 / (1.0 + exp(L));
         } else if (i < j) {
           (*objf_terms)(i, j) = K * (L > 15 ? -L : -log(1.0 + exp(L)));
-          (*objf_derivs)(i, j) = K / (1.0 + exp(-L));
+          (*objf_derivs)(i, j) = L < -15 ? 0 : -K / (1.0 + exp(-L));
         } else {
           (*objf_terms)(i, j) = 0;
           (*objf_derivs)(i, j) = 0;
