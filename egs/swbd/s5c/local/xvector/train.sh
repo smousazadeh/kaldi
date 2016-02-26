@@ -6,7 +6,7 @@
 . ./cmd.sh
 set -e
 
-stage=1
+stage=3
 train_stage=-10
 generate_alignments=true # false if doing ctc training
 speed_perturb=true
@@ -22,6 +22,7 @@ data=data/train_nodup_sp_hires  # you can't change this without changing
 xvector_dim=200 # dimension of the xVector.  configurable.
 xvector_dir=exp/xvector_a
 egs_dir=exp/xvector_a/egs
+
 
 
 . ./path.sh
@@ -44,8 +45,12 @@ if [ $stage -le 3 ]; then
       $xvector_dir/nnet.config
 fi
 
-if [ $stage -le 4 ] && [ -z "$egs_dir" ]; then
+if [ $stage -le 4 ]; then
   # dump egs.
+  if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d $dir/egs/storage ]; then
+    utils/create_split_dir.pl \
+     /export/b{03,11,12,13}/$USER/kaldi-data/egs/swbd-$(date +'%m_%d_%H_%M')/s5/$egs_dir/storage $egs_dir/storage
+  fi
   steps/nnet3/xvector/get_egs.sh --cmd "$train_cmd" \
     "$data" $egs_dir
 fi

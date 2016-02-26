@@ -90,9 +90,6 @@ if [ ! -f $data/feats.scp ]; then
   exit 1
 fi
 
-sdata=$data/split$nj
-utils/split_data.sh $data $nj
-
 if [ ! -f $data/utt2dur ]; then
   # getting this utt2dur will normally be more lightweight than
   # getting the exact utterance-to-length map.
@@ -245,6 +242,13 @@ if [ $stage -le 5 ]; then
     nnet3-shuffle-egs --srand=JOB ark:$dir/valid_egs_temp.JOB.ark ark:$dir/valid_diagnostic_egs.JOB.ark  || exit 1;
 fi
 
-#TODO: Probably need to cleanup the temp egs.
+if [ $stage -le 6 ]; then
+
+   for file in $(for x in $(seq $num_diagnostic_archives); do echo $dir/{valid,train_subset}_egs_temp.$x.ark; done) \
+            $(for x in $(seq $num_train_archives); do echo $dir/egs_temp.$x.ark; done); do
+     [ -L $file ] && rm $(readlink -f $file)
+     rm $file
+   done
+fi
 
 echo "$0: Finished preparing training examples"

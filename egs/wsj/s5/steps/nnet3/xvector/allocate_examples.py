@@ -23,7 +23,16 @@
 #   utt2  ...
 #
 # where each line is interpreted as follows:
-#  <source-utterance> <relative-archive-index> <ouput-archive-index> <start-frame-index1> <num-frames1> <start-frame-index2> <num-frames2>
+#  <source-utterance> <relative-archive-index> <absolute-archive-index> <start-frame-index1> <num-frames1> <start-frame-index2> <num-frames2>
+#
+#  Note: <relative-archive-index> is the zero-based offset of the archive-index
+# within the subset of archives that a particular ranges file corresponds to;
+# and <absolute-archive-index> is the 1-based numeric index of the destination
+# archive among the entire list of archives, which will form part of the
+# archive's filename (e.g. egs/egs.<absolute-archive-index>.ark);
+# <absolute-archive-index> is only kept for debug purposes so you can see which
+# archive each line corresponds to.
+#
 # and for each line we create an eg (containing two possibly-different-length chunks of data from the
 # same utterance), to one of the output archives.  The list of archives corresponding to
 # ranges.n will be written to output.n, so in exp/xvector_a/temp/outputs.1 we'd have:
