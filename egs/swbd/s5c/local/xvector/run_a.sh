@@ -37,7 +37,7 @@ if [ $stage -le 3 ]; then
 
   $train_cmd $xvector_dir/log/make_configs.log \
     steps/nnet3/xvector/make_jesus_configs.py \
-      --splice-indexes="-1,0,1 -2,-1,0,1 -3,0,3 -3,0,3 mean+stddev+count(-99:3:9:0) 0" \
+      --splice-indexes="-1,0,1 -2,-1,0,1 -3,0,3 -3,0,3 mean+stddev+count(0:3:9:396)" \
       --feat-dim $feat_dim --output-dim $xvector_dim \
       --num-jesus-blocks 100 \
       --jesus-input-dim 300 --jesus-output-dim 1000 --jesus-hidden-dim 2000 \
