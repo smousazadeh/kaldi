@@ -32,7 +32,7 @@ NnetXvectorTrainer::NnetXvectorTrainer(const NnetTrainerOptions &config,
     num_minibatches_processed_(0) {
   if (config_.zero_component_stats)
     ZeroComponentStats(nnet);
-  if (config_.momentum == 0.0 && 
+  if (config_.momentum == 0.0 &&
       config_.max_param_change == 0.0) {
     delta_nnet_= NULL;
   } else {
@@ -95,7 +95,7 @@ void NnetXvectorTrainer::Train(const NnetExample &eg) {
     ScaleNnet(config_.momentum, delta_nnet_);
   }
   if (config_.write_cache != "") {
-    Output ko(config_.write_cache, 
+    Output ko(config_.write_cache,
       config_.binary_write_cache);
     compiler_.WriteCache(ko.Stream(), config_.binary_write_cache);
   }
@@ -132,6 +132,7 @@ void NnetXvectorTrainer::ProcessOutputs(NnetComputer *computer) {
                                    (supply_deriv ? &xvector_deriv : NULL),
                                    (supply_deriv ? &deriv_s : NULL),
                                    (supply_deriv ? &deriv_b : NULL),
+                                   NULL, // The raw scores aren't needed
                                    &tot_objf,
                                    &tot_weight);
 
@@ -145,7 +146,7 @@ void NnetXvectorTrainer::ProcessOutputs(NnetComputer *computer) {
           computer->AcceptOutputDeriv(b_name, &deriv_b_mat);
         }
 
-        objf_info_[xvector_name].UpdateStats(xvector_name, 
+        objf_info_[xvector_name].UpdateStats(xvector_name,
                                              config_.print_interval,
                                              num_minibatches_processed_++,
                                              tot_weight, tot_objf);
@@ -266,22 +267,22 @@ void GetComputationRequestXvector(const Nnet &nnet,
     IoSpecification &io_spec = dest.back();
     io_spec.name = name;
     io_spec.indexes = io.indexes;
-    io_spec.has_deriv = false; 
+    io_spec.has_deriv = false;
   }
 
   // We only need the output on frame t=0 for each n.
   // So the output index for output node is (n, 0, 0)
-  // for n = 0,.., min number of n-values for different t 
+  // for n = 0,.., min number of n-values for different t
   // in input indexes.
   // indexes for "s" and "b" output nodes are equal to (0,0,0).
   int32 io_index_size = request->inputs[0].indexes.size(),
          n_indx_size = 1e6, t_ind;
-  std::vector<Index> output_indexes, 
+  std::vector<Index> output_indexes,
     affine_output_indexes;
   affine_output_indexes.resize(1);
   affine_output_indexes[0].n = 0;
   affine_output_indexes[0].t = 0;
-  
+
   std::map<int32, int32> n_indx_sizes;
   for (int32 indx = 0; indx < io_index_size; indx++) {
     t_ind = request->inputs[0].indexes[indx].t;
@@ -300,7 +301,7 @@ void GetComputationRequestXvector(const Nnet &nnet,
     output_indexes[indx].n = indx;
     output_indexes[indx].t = 0;
   }
-  
+
   // In order to generate computation request for output nodes,
   // we should find output nodes and add io_spec for each one.
   int32 num_nodes = nnet.NumNodes();
@@ -310,8 +311,8 @@ void GetComputationRequestXvector(const Nnet &nnet,
       dest.resize(dest.size() + 1);
       IoSpecification &io_spec = dest.back();
       io_spec.name = nnet.GetNodeName(node_index);
-      if (nnet.GetNodeName(node_index) == "s" || 
-          nnet.GetNodeName(node_index) == "b") 
+      if (nnet.GetNodeName(node_index) == "s" ||
+          nnet.GetNodeName(node_index) == "b")
         io_spec.indexes = affine_output_indexes;
       else
         io_spec.indexes = output_indexes;
