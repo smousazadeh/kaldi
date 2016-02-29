@@ -99,7 +99,7 @@ void NnetXvectorComputer::GetComputationRequest(
   // Add an io_spec for the output node.
   int32 output_node_index = nnet_->GetNodeIndex(output_name);
   if (!nnet_->IsOutputNode(output_node_index))
-    KALDI_ERR << "No output node called '" << input_name
+    KALDI_ERR << "No output node called '" << output_name
               << "' in the network.";
   request->outputs[0].name = output_name;
   request->outputs[0].indexes = output_indexes;
