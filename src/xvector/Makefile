@@ -10,7 +10,7 @@ LDLIBS += $(CUDA_LDLIBS)
 
 TESTFILES = xvector-test
 
-OBJFILES = xvector.o nnet-xvector-training.o nnet-xvector-diagnostics.o 
+OBJFILES = xvector.o nnet-xvector-training.o nnet-xvector-diagnostics.o nnet-xvector-compute.o
 
 LIBNAME = kaldi-xvector
 
