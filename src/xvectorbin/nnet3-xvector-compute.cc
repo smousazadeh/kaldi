@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
       "If not set, defaults to xvector-period.");
     po.Register("output-as-vector", &output_as_vector,
       "If true, average the chunk-level xvectors and output as an "
-      "archive of vector.");
+      "archive of vectors.");
     po.Register("repeat", &repeat, "If true, the xvectors are copied between "
       "periods so that the output has the same number of rows as the input.");
     po.Read(argc, argv);
