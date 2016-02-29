@@ -1,4 +1,4 @@
-// nnet3/nnet-xvector-diagnostics.h
+// xvector/nnet-xvector-diagnostics.h
 
 // Copyright    2015  Johns Hopkins University (author: Daniel Povey)
 // Copyright    2016  Pegah Ghahremani
