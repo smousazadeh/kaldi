@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
       Matrix<BaseFloat> xvector_mat;
 
       // Create the output xvector vector or matrix. Only allocate memory
-      // for the one we're goijg to output to.
+      // for the one we're going to output.
       if (output_as_vector)
         xvector_avg.Resize(xvector_dim);
       else
