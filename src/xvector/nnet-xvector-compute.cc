@@ -96,8 +96,7 @@ void NnetXvectorComputer::GetComputationRequest(
     output_indexes[indx].t = 0;
   }
 
-  // In order to generate a computation request for the output node,
-  // we should find output nodes and add io_spec for each one.
+  // Add an io_spec for the output node.
   int32 output_node_index = nnet_->GetNodeIndex(output_name);
   if (!nnet_->IsOutputNode(output_node_index))
     KALDI_ERR << "No output node called '" << input_name
