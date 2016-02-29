@@ -1,4 +1,4 @@
-// nnet3/nnet-xvector-training.cc
+// xvector/nnet-xvector-training.cc
 
 // Copyright      2015    Johns Hopkins University (author: Daniel Povey)
 //                2015    Xiaohui Zhang

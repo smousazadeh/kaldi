@@ -1,8 +1,8 @@
-// nnet3/nnet-xvector-training.h
+// xvector/nnet-xvector-training.h
 
 // Copyright    2015  Johns Hopkins University (author: Daniel Povey)
 //              2016  Xiaohui Zhang
-// Copyright    2016    Pegah Ghahremani
+// Copyright    2016  Pegah Ghahremani
 // See ../../COPYING for clarification regarding multiple authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
