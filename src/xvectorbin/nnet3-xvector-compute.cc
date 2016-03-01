@@ -125,9 +125,9 @@ int main(int argc, char *argv[]) {
         num_fail++;
         continue;
       } else if (num_rows < this_chunk_size) {
-        KALDI_LOG << "Chunk-size of " << this_chunk_size << " is greater than "
+        KALDI_LOG << "Chunk size of " << this_chunk_size << " is greater than "
                   << "the number of rows in utterance: " << utt
-                  << ", using chunk-size  of " << num_rows;
+                  << ", using chunk size  of " << num_rows;
         this_chunk_size = num_rows;
       }
 
