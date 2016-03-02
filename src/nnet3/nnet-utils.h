@@ -144,12 +144,22 @@ int32 NumUpdatableComponents(const Nnet &dest);
 void ConvertRepeatedToBlockAffine(Nnet *nnet);
 
 /// This function returns various info about the neural net.
-/// If the nnet satisfied IsSimpleNnet(nnet), the info includes "left-context=5\nright-context=3\n...".  The info includes
+/// If the nnet satisfied IsSimpleNnet(nnet), the info includes
+/// "left-context=5\nright-context=3\n...".  The info includes
 /// the output of nnet.Info().
 /// This is modeled after the info that AmNnetSimple returns in its
 /// Info() function (we need this in the CTC code).
 std::string NnetInfo(const Nnet &nnet);
 
+/// Returns a string containing info on an output node called 's' if
+/// it can be interpreted as a symmetric matrix.
+std::string SpMatrixOutputInfo(const Nnet &nnet);
+
+/// This function assumes that the node named in 'output_node' is a constant
+/// function of the input features (e.g, a ConstantFunctionComponent is
+/// its input) and returns it in 'out'.
+void GetConstantOutput(const Nnet &nnet, const std::string &output_name,
+      Vector<BaseFloat> *out);
 
 } // namespace nnet3
 } // namespace kaldi
