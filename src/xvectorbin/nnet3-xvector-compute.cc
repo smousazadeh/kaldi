@@ -179,16 +179,18 @@ int main(int argc, char *argv[]) {
           for (int32 i = out_offset;
               i < std::min(out_offset + xvector_period, num_rows); i++)
             xvector_mat.Row(i).CopyFromVec(xvector);
-        } else
+        } else {
           xvector_mat.Row(chunk_indx).CopyFromVec(xvector);
+        }
       }
 
       // If output is a vector, scale it by the total weight.
       if (output_as_vector) {
         xvector_avg.Scale(1.0 / total_chunk_weight);
         vector_writer.Write(utt, xvector_avg);
-      } else
+      } else {
         matrix_writer.Write(utt, xvector_mat);
+      }
 
       frame_count += feats.NumRows();
       num_success++;
