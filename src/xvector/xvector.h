@@ -44,7 +44,7 @@ namespace kaldi {
   the objective function correctly.
   Let the log-odds L(v,w) [interpreted as log(p_same(v,w) / p_different(v,w))]
   be defined as:
-      L(v, w) = v' w -  v' S v - w' S w
+      L(v, w) = v' w -  v' S v - w' S w + b
   then p_same(v, w) = -log(1 + exp(-l(v, w)), and
   p_different(v, w) = 1 - p_same(v, w) = -log(1 + exp(-l(v, w)).
 
@@ -72,6 +72,23 @@ namespace kaldi {
     CuMatrixBase<BaseFloat> *scores_out,
     BaseFloat *tot_objf,
     BaseFloat *tot_weight);
+
+ /*
+ Compute the similarity score between two input xvectors. The score is
+ defined as:
+      L(v, w) = v' w -  v' S v - w' S w + b
+ @param [in] v  The first xvector.
+ @param [in] w  The second xvector.
+ @param [in] S  A symmetric matrix, usually a constant output of the
+ Nnet the xvectors came from.
+ @param [in] b  A scalar offset, usually a constant output of the Nnet
+ the xvectors came from.
+ @return  The score between vectors v and w.
+ */
+ BaseFloat SimilarityScore(const Vector<BaseFloat> &v,
+    const Vector<BaseFloat> &w, const SpMatrix<BaseFloat> &S,
+    BaseFloat b);
+
 }  // namespace kaldi
 
 #endif

@@ -115,4 +115,16 @@ void ComputeXvectorObjfAndDeriv(
   (*tot_weight) = N;
 }
 
+BaseFloat SimilarityScore(const Vector<BaseFloat> &v,
+    const Vector<BaseFloat> &w, const SpMatrix<BaseFloat> &S,
+    BaseFloat b) {
+  KALDI_ASSERT(v.Dim() == w.Dim() && v.Dim() == S.NumRows());
+  Vector<BaseFloat> Sv(v.Dim());
+  Sv.AddSpVec(1.0, S, v, 0);
+  Vector<BaseFloat> Sw(w.Dim());
+  Sw.AddSpVec(1.0, S, w, 0);
+  BaseFloat L = VecVec(v, w) - VecVec(v, Sv) - VecVec(w, Sw) + b;
+  return L;
+}
+
 } // namespace kaldi
