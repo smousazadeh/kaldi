@@ -436,7 +436,7 @@ std::string SpMatrixOutputInfo(const Nnet &nnet) {
     // (1/2)*(d+1)*d.
     int32 output_dim = nnet.OutputDim(output_name);
     int32 d = (0.5) * (1 + sqrt(1 + 8 * output_dim)) - 1;
-    if ( ((d+1) * d) / 2 == output_dim) {
+    if (((d + 1) * d) / 2 == output_dim) {
       SpMatrix<BaseFloat> S(d);
       Vector<BaseFloat> s_vec(output_dim);
       GetConstantOutput(nnet, output_name, &s_vec);
