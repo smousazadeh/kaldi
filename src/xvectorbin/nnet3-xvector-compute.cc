@@ -132,9 +132,8 @@ int main(int argc, char *argv[]) {
       }
 
       int32 num_chunks = ceil((num_rows - this_chunk_size)
-            / static_cast<BaseFloat>(xvector_period)) + 1,
-            num_xvectors = repeat ? num_rows : ceil(num_rows
-            / static_cast<BaseFloat>(xvector_period));
+            / static_cast<BaseFloat>(xvector_period)) + 1;
+      int32 num_xvectors = repeat ? num_rows : num_chunks;
 
       // The number of frames by which the last two chunks overlap.
       int32 overlap = std::max(0, (num_chunks - 1) * xvector_period
