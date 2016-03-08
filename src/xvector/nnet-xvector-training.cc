@@ -203,7 +203,7 @@ void ObjectiveFunctionInfo::PrintStatsForThisPhase(
               << "' for minibatches " << start_minibatch
               << '-' << end_minibatch << " is "
               << (tot_objf_this_phase / tot_weight_this_phase) << " over "
-              << tot_weight_this_phase << " frames.";
+              << tot_weight_this_phase << " chunks.";
   } else {
     BaseFloat objf = (tot_objf_this_phase / tot_weight_this_phase),
         aux_objf = (tot_aux_objf_this_phase / tot_weight_this_phase),
@@ -212,7 +212,7 @@ void ObjectiveFunctionInfo::PrintStatsForThisPhase(
               << "' for minibatches " << start_minibatch
               << '-' << end_minibatch << " is "
               << objf << " + " << aux_objf << " = " << sum_objf
-              << " over " << tot_weight_this_phase << " frames.";
+              << " over " << tot_weight_this_phase << " chunks.";
   }
 }
 
@@ -222,11 +222,11 @@ bool ObjectiveFunctionInfo::PrintTotalStats(const std::string &name) const {
         sum_objf = objf + aux_objf;
   if (tot_aux_objf == 0.0) {
     KALDI_LOG << "Overall average objective function for '" << name << "' is "
-              << (tot_objf / tot_weight) << " over " << tot_weight << " frames.";
+              << (tot_objf / tot_weight) << " over " << tot_weight << " chunks.";
   } else {
     KALDI_LOG << "Overall average objective function for '" << name << "' is "
               << objf << " + " << aux_objf << " = " << sum_objf
-              << " over " << tot_weight << " frames.";
+              << " over " << tot_weight << " chunks.";
   }
   KALDI_LOG << "[this line is to be parsed by a script:] "
             << "log-prob-per-frame="
@@ -250,8 +250,7 @@ void GetComputationRequestXvector(const Nnet &nnet,
   request->need_model_derivative = need_model_derivative;
   request->store_component_stats = store_component_stats;
 
-  // xvector-egs has multiple inputs(e.g. different inputs correspond
-  // to different chunks and no outputs.
+  // Examples for xvectors have no outputs.
   for (size_t i = 0; i < eg.io.size(); i++) {
     const NnetIo &io = eg.io[i];
     const std::string &name = io.name;
@@ -271,30 +270,20 @@ void GetComputationRequestXvector(const Nnet &nnet,
   }
 
   // We only need the output on frame t=0 for each n.
-  // So the output index for output node is (n, 0, 0)
-  // for n = 0,.., min number of n-values for different t
-  // in input indexes.
-  // indexes for "s" and "b" output nodes are equal to (0,0,0).
+  // So the output index for the output node is (n, 0, 0)
+  // for n=0 to max(n).
+  // Indexes for "s" and "b" output nodes are equal to (0,0,0).
   int32 io_index_size = request->inputs[0].indexes.size(),
-         n_indx_size = 1e6, t_ind;
+        n_indx_size = 0;
   std::vector<Index> output_indexes,
     affine_output_indexes;
   affine_output_indexes.resize(1);
   affine_output_indexes[0].n = 0;
   affine_output_indexes[0].t = 0;
 
-  std::map<int32, int32> n_indx_sizes;
-  for (int32 indx = 0; indx < io_index_size; indx++) {
-    t_ind = request->inputs[0].indexes[indx].t;
-    if (n_indx_sizes.count(t_ind) != 0)
-      n_indx_sizes[t_ind] += 1;
-    else
-      n_indx_sizes.insert(std::make_pair(t_ind, 1));
-  }
-  std::map<int32, int32>::const_iterator iter;
-  for (iter = n_indx_sizes.begin(); iter != n_indx_sizes.end(); iter++)
-    n_indx_size = std::min(n_indx_size, iter->second);
-
+  for (int32 indx = 0; indx < io_index_size; indx++)
+    n_indx_size = std::max(n_indx_size,
+      request->inputs[0].indexes[indx].n + 1);
 
   output_indexes.resize(n_indx_size);
   for (int32 indx = 0; indx < n_indx_size; indx++) {
