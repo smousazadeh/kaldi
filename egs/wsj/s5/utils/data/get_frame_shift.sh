@@ -7,8 +7,10 @@
 # with utt2dur file already existing (or the utt2dur file will be created if
 # not), and it attempts to work out the frame shift by comparing the utt2dur
 # with the output of feat-to-len on the feats.scp.  It prints it out.  If the
-# computed frame shift does not seem to be a multiple of 0.005 seconds, the script
-# will die.  Any errors will be printed to the standard error.
+# utt2dur with the output of feat-to-len on the feats.scp.  It prints it out.
+# if the shift is very close to, but above, 0.01 (the normal frame shift) it
+# rounds it down.
+
 
 . utils/parse_options.sh
 . ./path.sh
@@ -47,11 +49,7 @@ if [ -z $temp ]; then
 fi
 
 head -n 10 $dir/utt2dur | paste - $temp | \
-   awk '{ dur += $2; frames += $4; } END { shift = dur / frames;
-       shift_scaled = shift / 0.005; int_shift_scaled = int(0.5 + shift_scaled);
-       diff = shift_scaled - int_shift_scaled; if (diff < 0) { diff = diff * -1; }
-      if (diff < 0.1) { print 0.005 * int_shift_scaled; } else {
-      print "get_frame_shift.sh: could not make sense of shift " shift_scaled  >"/dev/stderr"; exit(1) }}' || exit 1;
+   awk '{ dur += $2; frames += $4; } END { shift = dur / frames; if (shift > 0.01 && shift < 0.0102) shift = 0.01; print shift; }' || exit 1;
 
 rm $temp
 
