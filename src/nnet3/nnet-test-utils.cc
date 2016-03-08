@@ -1013,7 +1013,7 @@ static void GenerateRandomComponentConfig(std::string *component_type,
     }
     case 12: {
       *component_type = "FixedScaleComponent";
-      os << "dim=" << RandInt(1, 100);
+      os << "dim=" << RandInt(1, 100) << " scale=" << RandInt(1, 10);
       break;
     }
     case 13: {
