@@ -226,7 +226,7 @@ bool ObjectiveFunctionInfo::PrintTotalStats(const std::string &name) const {
   } else {
     KALDI_LOG << "Overall average objective function for '" << name << "' is "
               << objf << " + " << aux_objf << " = " << sum_objf
-              << " over " << tot_weight << " chunk.";
+              << " over " << tot_weight << " chunks.";
   }
   KALDI_LOG << "[this line is to be parsed by a script:] "
             << "log-prob-per-frame="
