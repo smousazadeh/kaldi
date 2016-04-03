@@ -313,7 +313,6 @@ template<class Holder>  class SequentialTableReaderScriptImpl:
       bool ans;
       // note, NULL means it doesn't read the binary-mode header
       if (Holder::IsReadInBinary()) {
-        KALDI_LOG << data_rxfilename_;
         ans = data_input_.Open(data_rxfilename_, NULL);
       } else {
         ans = data_input_.OpenTextMode(data_rxfilename_);

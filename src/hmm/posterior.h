@@ -122,7 +122,7 @@ class GaussPostHolder {
     t_.swap(other->t_);
   }
 
-  bool ExtractRange(GaussPostHolder *other, const std::string &range) {
+  bool ExtractRange(const GaussPostHolder &other, const std::string &range) {
     KALDI_ERR << "ExtractRange is not defined for this type of holder.";
     return false;
   }
