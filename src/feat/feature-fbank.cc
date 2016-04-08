@@ -1,6 +1,7 @@
 // feat/feature-fbank.cc
 
 // Copyright 2009-2012  Karel Vesely
+//                2016  Johns Hopkins University (author: Daniel Povey)
 
 // See ../../COPYING for clarification regarding multiple authors
 //
@@ -23,8 +24,8 @@
 
 namespace kaldi {
 
-Fbank::Fbank(const FbankOptions &opts)
-    : opts_(opts), feature_window_function_(opts.frame_opts), srfft_(NULL) {
+FbankComputer::FbankComputer(const FbankOptions &opts):
+    opts_(opts), srfft_(NULL) {
   if (opts.energy_floor > 0.0)
     log_energy_floor_ = Log(opts.energy_floor);
 
@@ -33,17 +34,25 @@ Fbank::Fbank(const FbankOptions &opts)
     srfft_ = new SplitRadixRealFft<BaseFloat>(padded_window_size);
 
   // We'll definitely need the filterbanks info for VTLN warping factor 1.0.
-  // [note: this call caches it.]  The reason we call this here is to
-  // improve the efficiency of the "const" version of Compute().
+  // [note: this call caches it.]
   GetMelBanks(1.0);
+}
+
+FbankComputer::FbankComputer(const FbankComputer &other):
+    opts_(other.opts), log_energy_floor_(other.log_energy_floor_),
+    mel_banks_(other.mel_banks_), srfft_(NULL) {
+  for (std::map<BaseFloat, MelBanks*>::iterator iter = mel_banks_.begin();
+      iter != mel_banks_.end();
+      ++iter)
+    iter->second = new MelBanks(*(iter->second));
+  if (other.srfft_)
+    srfft_ = new SplitRadixRealFft<BaseFloat>(*(other->srfft_));
 }
 
 Fbank::~Fbank() {
   for (std::map<BaseFloat, MelBanks*>::iterator iter = mel_banks_.begin();
-      iter != mel_banks_.end();
-      ++iter) {
+      iter != mel_banks_.end(); ++iter)
     delete iter->second;
-  }
   delete srfft_;
 }
 
@@ -61,89 +70,37 @@ const MelBanks *Fbank::GetMelBanks(BaseFloat vtln_warp) {
   return this_mel_banks;
 }
 
-const MelBanks *Fbank::GetMelBanks(BaseFloat vtln_warp,
-                                   bool *must_delete) const {
-  MelBanks *this_mel_banks = NULL;
-  std::map<BaseFloat, MelBanks*>::const_iterator iter =
-      mel_banks_.find(vtln_warp);
-  if (iter == mel_banks_.end()) {
-    this_mel_banks = new MelBanks(opts_.mel_opts,
-                                  opts_.frame_opts,
-                                  vtln_warp);
-    *must_delete = true;
-  } else {
-    this_mel_banks = iter->second;
-    *must_delete = false;
-  }
-  return this_mel_banks;
-}
-
 void Fbank::Compute(const VectorBase<BaseFloat> &wave,
                     BaseFloat vtln_warp,
                     Matrix<BaseFloat> *output,
                     Vector<BaseFloat> *wave_remainder) {
-  const MelBanks *this_mel_banks = GetMelBanks(vtln_warp);
   ComputeInternal(wave, *this_mel_banks, output, wave_remainder);
 }
 
-void Fbank::Compute(const VectorBase<BaseFloat> &wave,
-                    BaseFloat vtln_warp,
-                    Matrix<BaseFloat> *output,
-                    Vector<BaseFloat> *wave_remainder) const {
-  bool must_delete_mel_banks;
-  const MelBanks *mel_banks = GetMelBanks(vtln_warp,
-                                          &must_delete_mel_banks);
+void FbankComputer::Compute(BaseFloat signal_log_energy,
+                            BaseFloat vtln_warp,
+                            VectorBase<BaseFloat> *signal_frame,
+                            VectorBase<BaseFloat> *feature) {
 
-  ComputeInternal(wave, *mel_banks, output, wave_remainder);
+  const MelBanks &mel_banks = *(GetMelBanks(vtln_warp));
 
-  if (must_delete_mel_banks)
-    delete mel_banks;
-}
-
-
-void Fbank::ComputeInternal(const VectorBase<BaseFloat> &wave,
-                            const MelBanks &mel_banks,
-                            Matrix<BaseFloat> *output,
-                            Vector<BaseFloat> *wave_remainder) const {
-  KALDI_ASSERT(output != NULL);
-
-  // Get dimensions of output features
-  int32 rows_out = NumFrames(wave.Dim(), opts_.frame_opts);
-  int32 cols_out = opts_.mel_opts.num_bins + (opts_.use_energy ? 1 : 0);
-  if (rows_out == 0) {
-    output->Resize(0, 0);
-    if (wave_remainder != NULL)
-      *wave_remainder = wave;
-    return;
-  }
-  // Prepare the output buffer
-  output->Resize(rows_out, cols_out);
-
-  // Optionally extract the remainder for further processing
-  if (wave_remainder != NULL)
-    ExtractWaveformRemainder(wave, opts_.frame_opts, wave_remainder);
+  KALDI_ASSERT(signal_frame->Dim() == opts_.frame_opts.PaddedWindowSize() &&
+               feature->Dim() == this->Dim());
 
   // Buffers
   Vector<BaseFloat> window;  // windowed waveform.
   Vector<BaseFloat> mel_energies;
-  std::vector<BaseFloat> temp_buffer;  // used by srfft.
-  BaseFloat log_energy;
 
-  // Compute all the freames, r is frame index..
-  for (int32 r = 0; r < rows_out; r++) {
-    // Cut the window, apply window function
-    ExtractWindow(wave, r, opts_.frame_opts, feature_window_function_, &window,
-                  (opts_.use_energy && opts_.raw_energy ? &log_energy : NULL));
 
-    // Compute energy after window function (not the raw one)
-    if (opts_.use_energy && !opts_.raw_energy)
-      log_energy = Log(std::max(VecVec(window, window),
-                                std::numeric_limits<BaseFloat>::min()));
+  // Compute energy after window function (not the raw one)
+  if (opts_.use_energy && !opts_.raw_energy)
+    signal_log_energy = Log(std::max(VecVec(window, window),
+                                     std::numeric_limits<BaseFloat>::min()));
 
-    if (srfft_ != NULL)  // Compute FFT using split-radix algorithm.
-      srfft_->Compute(window.Data(), true, &temp_buffer);
-    else  // An alternative algorithm that works for non-powers-of-two.
-      RealFft(&window, true);
+  if (srfft_ != NULL)  // Compute FFT using split-radix algorithm.
+    srfft_->Compute(signal_frame->Data(), true);
+  else  // An alternative algorithm that works for non-powers-of-two.
+    RealFft(&window, true);
 
     // Convert the FFT into a power spectrum.
     ComputePowerSpectrum(&window);
