@@ -21,9 +21,24 @@ top_n_words=100 # Number of common words that we compile into each graph (most f
 stage=-1
 cleanup=true
 
-ngram_order=2
+ngram_order=4                     # Maximum n-gram order that may be used (but
+                                  # note: the actual n-gram order may be smaller
+                                  # than this, depending on the data and
+                                  # min_lm_state_count.
+min_lm_state_count=10                 # n-gram states for orders greater
+                                      # than 2 will be pruned away if the count of
+                                      # words leaving the state is less than this.
+                                      # It means that you can set max_ngram_order to 4
+                                      # and still have the script do something reasonable
+                                      # if the amount of data is small.
+
+
+
 top_words_interpolation_weight=0.1    # Interpolation weight for top-words unigram
-biased_unigram_interpolation_weight=0.1 # Interpolation weight for biased unigram
+unigram_interpolation_weight=0.1      # Interpolation weight for biased unigram
+                                      # estimated from utterance-group.
+min_words_per_utterance_group=100  # If an utterance has fewer t
+
 biased_bigram_interpolation_weight=0.9  # Interpolation weight for biased bigram
 
 # End configuration options.
@@ -62,6 +77,7 @@ oov=`cat $lang/oov.int` || exit 1;
 mkdir -p $graph_dir/log
 
 if [ $stage -le 0 ]; then
+  export LC_ALL=C
   utils/sym2int.pl --map-oov $oov -f 2- $lang/words.txt <$data/text.orig | \
     awk '{for(x=2;x<=NF;x++) print $x;}' | sort | uniq -c | \
     sort -rn > $graph_dir/word_counts.int || exit 1;
@@ -86,7 +102,7 @@ fi
 
 mkdir -p $graph_dir/split$nj
 mkdir -p $graph_dir/log
- 
+
 split_texts=""
 for n in $(seq $nj); do
   mkdir -p $graph_dir/split$nj/$n
@@ -119,7 +135,7 @@ am-info --print-args=false $model_dir/final.mdl |\
 
 # Creates the graph table.
 for n in `seq $nj`; do
-  cat $graph_dir/split$nj/$n/HCLG.fsts.scp 
+  cat $graph_dir/split$nj/$n/HCLG.fsts.scp
 done > $graph_dir/tmp.HCLG.fsts.scp
 
 # The graphs we created above were indexed by the old utterance id. We have to

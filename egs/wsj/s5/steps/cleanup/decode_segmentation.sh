@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Copyright 2014  Guoguo Chen, 2015 GoVivace Inc. (Nagendra Goel) 
+# Copyright 2014  Guoguo Chen, 2015 GoVivace Inc. (Nagendra Goel)
 # Apache 2.0
 
-# Begin configuration section.  
+# Begin configuration section.
 transform_dir=   # this option won't normally be used, but it can be used if you
                  # want to supply existing fMLLR transforms when decoding.
 iter=
@@ -67,7 +67,7 @@ mkdir -p $dir/log
 echo $nj > $dir/num_jobs
 
 if [ -z "$model" ]; then # if --model <mdl> was not specified on the command line...
-  if [ -z $iter ]; then model=$srcdir/final.mdl; 
+  if [ -z $iter ]; then model=$srcdir/final.mdl;
   else model=$srcdir/$iter.mdl; fi
 fi
 
@@ -75,20 +75,15 @@ for f in $sdata/1/feats.scp $sdata/1/cmvn.scp $model $graphdir/HCLG.fsts.scp; do
   [ ! -f $f ] && echo "$0: no such file $f" && exit 1;
 done
 
-# Figures out the proper HCLG.
-sort -k1,1 -u < $graphdir/HCLG.fsts.scp > $graphdir/HCLG.fsts.scp.sorted
-mv $graphdir/HCLG.fsts.scp.sorted $graphdir/HCLG.fsts.scp
-for x in `seq 1 $nj`; do
-  cat $graphdir/HCLG.fsts.scp |\
-    utils/filter_scp.pl -f 1 $sdata/$x/feats.scp > $sdata/$x/graphs.scp
-  num_feats=`cat $sdata/$x/feats.scp | wc -l`
-  num_graphs=`cat $sdata/$x/graphs.scp | wc -l`
-  if [ $num_graphs -ne $num_feats ]; then
-    echo "$0: number of graphs is not consistent with number of features."
-    exit 1
-  fi
-done
-HCLG="scp:$sdata/JOB/graphs.scp"
+# Split HCLG.fsts.scp by input utterance
+n1=$(cat $graphdir/HCLG.fsts.scp | wc -l)
+n2=$(cat $data/feats.scp | wc -l)
+if [ $n1 != $n2 ]; then
+  echo "$0: expected $n2 graphs in $graphdir/HCLG.fsts.scp, got $n1"
+fi
+
+utils/filter_scps.pl -f 1 JOB=1:$nj $sdata/JOB/feats.scp $graphdir/HCLG.fsts.scp $dir/HCLG.fsts.JOB.scp
+HCLG=scp:$dir/HCLG.fsts.JOB.scp
 
 if [ -f $srcdir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
 echo "$0: feature type is $feat_type";
@@ -98,7 +93,7 @@ cmvn_opts=`cat $srcdir/cmvn_opts 2>/dev/null`
 delta_opts=`cat $srcdir/delta_opts 2>/dev/null`
 
 thread_string=
-[ $num_threads -gt 1 ] && thread_string="-parallel --num-threads=$num_threads" 
+[ $num_threads -gt 1 ] && thread_string="-parallel --num-threads=$num_threads"
 
 case $feat_type in
   delta) feats="ark,s,cs:apply-cmvn $cmvn_opts --utt2spk=ark:$sdata/JOB/utt2spk scp:$sdata/JOB/cmvn.scp scp:$sdata/JOB/feats.scp ark:- | add-deltas $delta_opts ark:- ark:- |";;
