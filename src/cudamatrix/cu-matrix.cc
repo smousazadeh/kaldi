@@ -796,6 +796,7 @@ void CuMatrixBase<Real>::MulRowsGroupMat(const CuMatrixBase<Real> &src) {
     Mat().MulRowsGroupMat(src.Mat());
   }
 }
+
 template<typename Real>
 void CuMatrixBase<Real>::GroupPnormDeriv(const CuMatrixBase<Real> &src1,
                                          const CuMatrixBase<Real> &src2,
@@ -1287,15 +1288,34 @@ void CuMatrixBase<Real>::GroupPnorm(const CuMatrixBase<Real> &src, Real power) {
 #if HAVE_CUDA == 1
   if (CuDevice::Instantiate().Enabled()) {
     Timer tim;
-    dim3 dimBlock(CU2DBLOCK, CU2DBLOCK);
-    dim3 dimGrid(n_blocks(NumCols(), CU2DBLOCK),
-                 n_blocks(NumRows(), CU2DBLOCK));
-    cuda_group_pnorm(dimGrid, dimBlock, this->data_, src.data_, this->Dim(),
-                     src.Stride(), group_size, power);
+    if (power == Real(0) || power == Real(1) || power == Real(2)
+        || power == std::numeric_limits<Real>::infinity()) {
+      // One thread block per row.
+      // Use 2D block for small group size to simplify the calculation
+      // Each group is reduced by threads_per_group threads.
+      // threads_per_group should be a power of 2 for fast tree reduction.
+      int threads_per_group = CU1DBLOCK;
+      while (threads_per_group * 3 / 2 >= group_size) {
+        threads_per_group >>= 1;
+      }
+      if (group_size == 1) {
+        threads_per_group = 1;
+      }
+      dim3 dimBlock(threads_per_group, CU1DBLOCK / threads_per_group);
+      dim3 dimGrid(NumRows());
+      cuda_group_spec_pnorm(dimGrid, dimBlock, this->data_, src.data_,
+                            this->Dim(), src.Stride(), group_size, power);
+    } else {
+      dim3 dimBlock(CU2DBLOCK, CU2DBLOCK);
+      dim3 dimGrid(n_blocks(NumCols(), CU2DBLOCK),
+                   n_blocks(NumRows(), CU2DBLOCK));
+      cuda_group_pnorm(dimGrid, dimBlock, this->data_, src.data_, this->Dim(),
+                       src.Stride(), group_size, power);
+    }
     CU_SAFE_CALL(cudaGetLastError());
     CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
   } else
-  #endif
+#endif
   {
     Mat().GroupPnorm(src.Mat(), power);
   }
@@ -1549,6 +1569,42 @@ void CuMatrixBase<Real>::FindRowMaxId(CuArray<int32> *id) const {
     }
   }
 }
+
+template<typename Real>
+void CuMatrixBase<Real>::DiffSoftmaxPerRow(const CuMatrixBase<Real> &value,
+                                           const CuMatrixBase<Real> &diff) {
+
+  KALDI_ASSERT(SameDim(value, diff) && SameDim(value, *this));
+
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    Timer tim;
+
+    // CUDA thread layout: one thread block per matrix-row.
+    dim3 dimBlock(CU1DBLOCK);
+    dim3 dimGrid(num_rows_);
+    cuda_diff_softmax(dimGrid, dimBlock, data_, this->Dim(), value.Data(),
+        value.Stride(), diff.Data(), diff.Stride());
+    CU_SAFE_CALL(cudaGetLastError());
+
+
+    CuDevice::Instantiate().AccuProfile(__func__, tim.Elapsed());
+  } else
+#endif
+  {
+    const CuMatrixBase<Real> &P(value), &E(diff);
+    CuMatrixBase<Real> &D(*this);
+
+    D.CopyFromMat(P);
+    D.MulElements(E);
+    // At this point, D = P .* E (in matlab notation)
+    CuVector<Real> pe_vec(D.NumRows()); // For each row i, the dot product (p_t . e_t).
+    pe_vec.AddDiagMatMat(1.0, P, kNoTrans, E, kTrans, 0.0);
+
+    D.AddDiagVecMat(-1.0, pe_vec, P, kNoTrans, 1.0); // does D -= diag(pe_vec) * P.
+  }
+}
+
 
 template<typename Real>
 void CuMatrixBase<Real>::DiffXent(const CuArray<int32> &tgt,

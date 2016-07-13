@@ -101,6 +101,8 @@ fi
 output_dir=$dir/lattice_oracle
 
 if [ $stage -le 5 ]; then
+  # --use-segments false means we don't want the segmentation w.r.t. the
+  # original recordings, but w.r.t. the orginal segments.
   steps/get_ctm.sh --cmd "$cmd" --use-segments false \
     --print-silence true \
     $dir/${dataid}_appended $lang $output_dir

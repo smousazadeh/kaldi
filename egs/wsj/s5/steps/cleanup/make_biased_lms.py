@@ -51,7 +51,7 @@ def ProcessGroupOfLines(group_of_lines):
     # print the group utterance-id to the stdout; it forms the name in
     # the text-form archive.
     print(group_utterance_id)
-
+    sys.stdout.flush()
 
     try:
         command = "steps/cleanup/make_biased_lm.py " + args.lm_opts
@@ -63,7 +63,7 @@ def ProcessGroupOfLines(group_of_lines):
                 sys.exit("make_biased_lms.py: empty input line")
             utterance_id = a[0]
             # print <utt> <utt-group> to utterance-map file
-            print(utterance_id, group_utterance_id, file=utterance_map_file)
+            print(utterance_id, group_utterance_id, file = utterance_map_file)
             rest_of_line = ' '.join(a[1:])  # get rid of utterance id.
             print(rest_of_line, file=p.stdin)
         p.stdin.close()
@@ -74,6 +74,7 @@ def ProcessGroupOfLines(group_of_lines):
     # Print a blank line; this terminates the FST in the Kaldi fst-archive
     # format.
     print("")
+    sys.stdout.flush()
 
 
 

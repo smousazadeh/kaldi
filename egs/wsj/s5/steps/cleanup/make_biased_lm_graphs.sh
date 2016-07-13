@@ -17,13 +17,15 @@ set -e
 # Begin configuration section.
 nj=10
 cmd=run.pl
+lm_opts=
 scale_opts="--transition-scale=1.0 --self-loop-scale=0.1"
 top_n_words=100 # Number of common words that we compile into each graph (most frequent
                 # in $data/text.orig.
-top_n_words_weight=1.0
+top_n_words_weight=1.0  # this weight is before renormalization; it can be more
+                        # or less than 1.
 min_words_per_graph=100  # Utterances will be grouped so that they have at least
                          # this many words, before making the graph.
-stage=-1
+stage=0
 lm_opts=   # Additional options to make_biased_lm.py.
 
 # End configuration options.
@@ -58,7 +60,7 @@ fi
 data=$1
 lang=$2
 model_dir=$3
-graph_dir=$4
+dir=$4
 
 
 for f in $lang/oov.int $model_dir/tree $model_dir/final.mdl \
@@ -72,12 +74,15 @@ mkdir -p $dir/log
 # create top_words.{int,txt}
 if [ $stage -le 0 ]; then
   export LC_ALL=C
+  # the following pipe will be broken due to the 'head'; don't fail.
+  set +o pipefail
   utils/sym2int.pl --map-oov $oov -f 2- $lang/words.txt <$data/text | \
     awk '{for(x=2;x<=NF;x++) print $x;}' | sort | uniq -c | \
-    LC_ALL=C sort -nr | head -n $top_n_words > $dir/word_counts.int || exit 1;
-  total_count=$(awk '{x+=$1} END{print x}' < $dir/word_counts.int) || exit 1;
+     sort -nr | head -n $top_n_words > $dir/word_counts.int
+  set -o pipefail
+  total_count=$(awk '{x+=$1} END{print x}' < $dir/word_counts.int)
   # print top-n words with their unigram probabilities.
-  awk -v tot=$num_words -v weight=$top_n_words_weight '{print ($1*weight)/tot, $2;}' \
+  awk -v tot=$total_count -v weight=$top_n_words_weight '{print ($1*weight)/tot, $2;}' \
      <$dir/word_counts.int >$dir/top_words.int
   utils/int2sym.pl -f 2 $lang/words.txt <$dir/top_words.int >$dir/top_words.txt
 fi
@@ -89,11 +94,12 @@ if [ -z "$word_disambig_symbol" ]; then
 fi
 
 utils/split_data.sh --per-utt $data $nj
+
 sdata=$data/split$nj  # caution: we'll have to change this when we
                       # change how --per-utt works.
 
 
-mkdir -p $dir/log
+mkdir -p $dir/log $dir/fsts
 
 if [ $stage -le 1 ]; then
   echo "$0: creating utterance-group-specific decoding graphs with biased LMs"
@@ -101,21 +107,23 @@ if [ $stage -le 1 ]; then
   $cmd JOB=1:$nj $dir/log/compile_decoding_graphs.JOB.log \
     utils/sym2int.pl --map-oov $oov -f 2- $lang/words.txt $sdata/JOB/text \| \
     python steps/cleanup/make_biased_lms.py --min-words-per-graph=$min_words_per_graph \
-      --lm-opts="--word-disambig-symbol=$word_disambig_symbol $lm_opts" $dir/utt2group.JOB \| \
+      --lm-opts="--word-disambig-symbol=$word_disambig_symbol $lm_opts" $dir/fsts/utt2group.JOB \| \
     compile-train-graphs-fsts $scale_opts --read-disambig-syms=$lang/phones/disambig.int \
       $model_dir/tree $model_dir/final.mdl $lang/L_disambig.fst ark:- \
-    ark,scp:$dir/HCLG.fsts.JOB.ark,$dir/HCLG.fsts.JOB.scp || exit 1
+    ark,scp:$dir/fsts/HCLG.fsts.JOB.ark,$dir/fsts/HCLG.fsts.JOB.scp || exit 1
 fi
 
-for j in $(seq $nj); do cat $dir/HCLG.fsts.$j.scp; done > $dir/HCLG.fsts.per_utt.scp
-for j in $(seq $nj); do cat $dir/utt2group.$j; done > $dir/utt2group
+for j in $(seq $nj); do cat $dir/fsts/HCLG.fsts.$j.scp; done > $dir/fsts/HCLG.fsts.per_utt.scp
+for j in $(seq $nj); do cat $dir/fsts/utt2group.$j; done > $dir/fsts/utt2group
 
 
-# The following command
-utils/apply_map.pl $dir/HCLG.fsts.per_utt.scp <$dir/utt2group > $dir/HCLG.fsts
+cp $lang/words.txt $dir/
+
+# The following command gives us an scp file relative to utterance-id.
+utils/apply_map.pl -f 2 $dir/fsts/HCLG.fsts.per_utt.scp <$dir/fsts/utt2group > $dir/HCLG.fsts.scp
 
 n1=$(cat $data/utt2spk | wc -l)
-n2=$(cat $dir/HCLG.fsts)
+n2=$(cat $dir/HCLG.fsts.scp | wc -l)
 
 if [ $[$n1*9] -gt $[$n2*10] ]; then
   echo "$0: too many utterances have no scp, something seems to have gone wrong."

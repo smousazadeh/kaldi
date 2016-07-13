@@ -59,7 +59,14 @@ fi
 graphdir=$1
 data=$2
 dir=$3
-srcdir=`dirname $dir`; # The model directory is one level up from decoding directory.
+
+if [ -e $dir/final.mdl ]; then
+  srcdir=$dir
+elif [ -e $dir/../final.mdl ]; then
+  srcdir=$(dirname $dir)
+else
+  echo "$0: expected either $dir/final.mdl or $dir/../final.mdl to exist"
+fi
 sdata=$data/split$nj;
 
 mkdir -p $dir/log
@@ -82,8 +89,10 @@ if [ $n1 != $n2 ]; then
   echo "$0: expected $n2 graphs in $graphdir/HCLG.fsts.scp, got $n1"
 fi
 
-utils/filter_scps.pl -f 1 JOB=1:$nj $sdata/JOB/feats.scp $graphdir/HCLG.fsts.scp $dir/HCLG.fsts.JOB.scp
-HCLG=scp:$dir/HCLG.fsts.JOB.scp
+
+mkdir -p $dir/split_fsts
+utils/filter_scps.pl -f 1 JOB=1:$nj $sdata/JOB/feats.scp $graphdir/HCLG.fsts.scp $dir/split_fsts/HCLG.fsts.JOB.scp
+HCLG=scp:$dir/split_fsts/HCLG.fsts.JOB.scp
 
 if [ -f $srcdir/final.mat ]; then feat_type=lda; else feat_type=delta; fi
 echo "$0: feature type is $feat_type";
@@ -122,8 +131,8 @@ fi
 if ! $skip_scoring ; then
   [ ! -x local/score.sh ] && \
     echo "Not scoring because local/score.sh does not exist or not executable." && exit 1;
-  local/score.sh --cmd "$cmd" $scoring_opts $data $graphdir $dir ||
-    { echo "$0: Scoring failedr. (ignore by '--skip-scoring true')"; exit 1; }
+  steps/score_kaldi.sh --cmd "$cmd" $scoring_opts $data $graphdir $dir ||
+    { echo "$0: Scoring failed. (ignore by '--skip-scoring true')"; exit 1; }
 fi
 
 exit 0;

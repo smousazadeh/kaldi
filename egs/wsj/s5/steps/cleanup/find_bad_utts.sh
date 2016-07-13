@@ -111,7 +111,7 @@ fi
 if [ $stage -le 1 ]; then
   echo "$0: decoding $data using utterance-specific decoding graphs using model from $srcdir, output in $dir"
 
-  rm $dir/edits.*.txt $dir/aligned_ref.*.txt 2>/dev/null
+  rm $dir/edits.*.txt $dir/oracle_hyp.*.txt 2>/dev/null
 
   $cmd JOB=1:$nj $dir/log/decode.JOB.log \
     utils/sym2int.pl --map-oov $oov -f 2- $lang/words.txt $sdata/JOB/text \| \
@@ -124,7 +124,7 @@ if [ $stage -le 1 ]; then
      $dir/final.mdl ark:- "$feats" ark:- \| \
     lattice-oracle ark:- "ark:utils/sym2int.pl --map-oov $oov -f 2- $lang/words.txt $sdata/JOB/text|" \
       ark,t:- ark,t:$dir/edits.JOB.txt \| \
-    utils/int2sym.pl -f 2- $lang/words.txt '>' $dir/aligned_ref.JOB.txt || exit 1;
+    utils/int2sym.pl -f 2- $lang/words.txt '>' $dir/oracle_hyp.JOB.txt || exit 1;
 fi
 
 
@@ -132,7 +132,7 @@ if [ $stage -le 2 ]; then
   if [ -f $dir/edits.1.txt ]; then
     # the awk commands below are to ensure that partially-written files don't confuse us.
     for x in $(seq $nj); do cat $dir/edits.$x.txt; done | awk '{if(NF==2){print;}}' > $dir/edits.txt
-    for x in $(seq $nj); do cat $dir/aligned_ref.$x.txt; done | awk '{if(NF>=1){print;}}' > $dir/aligned_ref.txt
+    for x in $(seq $nj); do cat $dir/oracle_hyp.$x.txt; done | awk '{if(NF>=1){print;}}' > $dir/oracle_hyp.txt
   else
     echo "$0: warning: no file $dir/edits.1.txt, using previously concatenated file if present."
   fi
@@ -142,12 +142,12 @@ if [ $stage -le 2 ]; then
   cat $dir/text | awk '{print $1, (NF-1);}' > $dir/length.txt
 
   n1=$(wc -l < $dir/edits.txt)
-  n2=$(wc -l < $dir/aligned_ref.txt)
+  n2=$(wc -l < $dir/oracle_hyp.txt)
   n3=$(wc -l < $dir/text)
   n4=$(wc -l < $dir/length.txt)
   if [ $n1 -ne $n2 ] || [ $n2 -ne $n3 ] || [ $n3 -ne $n4 ]; then
     echo "$0: mismatch in lengths of files:"
-    wc $dir/edits.txt $dir/aligned_ref.txt $dir/text $dir/length.txt
+    wc $dir/edits.txt $dir/oracle_hyp.txt $dir/text $dir/length.txt
     exit 1;
   fi
 
@@ -158,13 +158,13 @@ if [ $stage -le 2 ]; then
 
   paste $dir/edits.txt \
       <(awk '{print $2}' $dir/length.txt) \
-      <(awk '{$1="";print;}' <$dir/aligned_ref.txt) \
+      <(awk '{$1="";print;}' <$dir/oracle_hyp.txt) \
       <(awk '{$1="";print;}' <$dir/text) > $dir/all_info.txt
 
   sort -nr -k2 $dir/all_info.txt > $dir/all_info.sorted.txt
 
   if $cleanup; then
-    rm $dir/edits.*.txt $dir/aligned_ref.*.txt
+    rm $dir/edits.*.txt $dir/oracle_hyp.*.txt
   fi
 
 fi
@@ -179,7 +179,7 @@ if [ $stage -le 3 ]; then
   #   out if there is systematic issue with lexicon, pronunciation or phonetic confusability
 
   mkdir -p $dir/analysis
-  align-text --special-symbol="***"  ark:$dir/text ark:$dir/aligned_ref.txt  ark,t:- | \
+  align-text --special-symbol="***"  ark:$dir/text ark:$dir/oracle_hyp.txt  ark,t:- | \
     utils/scoring/wer_per_utt_details.pl --special-symbol "***" > $dir/analysis/per_utt_details.txt
 
   cat $dir/analysis/per_utt_details.txt | \

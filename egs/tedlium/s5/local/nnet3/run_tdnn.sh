@@ -4,10 +4,10 @@ set -uo pipefail
 set -e
 
 # this is the standard "tdnn" system, built in nnet3; it's what we use to
-# call multi-splice. 
+# call multi-splice.
 # This script is designed to run using the 'cleaned-up' data.
 
-# Run this script with the options --cleanup-affix <cleanup_affix> --min-seg-len <min_seg_len>, 
+# Run this script with the options --cleanup-affix <cleanup_affix> --min-seg-len <min_seg_len>,
 # where <cleanup_affix> matches the cleanup-affix passed to local/run_cleanup_segmentation.sh
 # <min_seg_len> is required to combine segments so as to not lose any data when doing chain training or sequence training
 # To run without any cleanup, pass the options --cleanup-affix "" --min-seg-len ""
@@ -65,7 +65,7 @@ fi
 train_set=train_${cleanup_affix}_sp_min${min_seg_len}
 
 gmm_dir=exp/tri3_${cleanup_affix}
-ali_dir=${gmm_dir}_ali_${train_set}   
+ali_dir=${gmm_dir}_ali_${train_set}
 
 local/nnet3/run_ivector_common.sh --stage $stage \
   --generate-alignments true \
@@ -77,7 +77,7 @@ if [ $stage -le 11 ]; then
 
   # create the config files for nnet initialization
   repair_opts=${self_repair_scale:+" --self-repair-scale=$self_repair_scale "}
-  
+
   python steps/nnet3/tdnn/make_configs.py  \
     $repair_opts \
     --feat-dir=data/${train_set}_hires \

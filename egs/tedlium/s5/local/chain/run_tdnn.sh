@@ -2,7 +2,7 @@
 #
 # This script requires that you have run the toplevel run.sh script in TEDLIUM up to stage 7.
 # This script is designed to run using the 'cleaned-up' data.
-# Run this script with the options --cleanup-affix <cleanup_affix> --min-seg-len <min_seg_len>, 
+# Run this script with the options --cleanup-affix <cleanup_affix> --min-seg-len <min_seg_len>,
 # where <cleanup_affix> matches the cleanup-affix passed to local/run_cleanup_segmentation.sh
 # <min_seg_len> is required to combine segments so as to not lose any data when doing chain training or sequence training
 # To run without any cleanup, pass the options --cleanup-affix "" --min-seg-len ""
@@ -31,7 +31,7 @@
 ## %WER 12.1 | 1155 27512 | 89.9 7.3 2.8 2.0 12.1 81.5 | 0.070 | exp/chain_cleaned_d/tdnn/decode_test/score_10_0.0/ctm.filt.filt.sys
 ## %WER 11.4 | 1155 27512 | 90.4 6.5 3.0 1.8 11.4 79.7 | 0.010 | exp/chain_cleaned_d/tdnn/decode_test_rescore/score_10_0.0/ctm.filt.filt.sys
 
-# To reproduce the setup used in the paper, 
+# To reproduce the setup used in the paper,
 # pass the options --cleanup-affix "" --min-seg-len "" --affix _more_ce --relu_dim 525 --xent_regularize 0.2
 #
 # Results: (Run for x in exp/chain/tdnn_more_ce/decode*; do [ -d $x ] && grep Sum $x/score_*/*.sys | utils/best_wer.sh; done 2>/dev/null)
@@ -99,7 +99,7 @@ fi
 train_set=train_${cleanup_affix}_sp_min${min_seg_len}
 
 gmm_dir=exp/tri3_${cleanup_affix}
-ali_dir=${gmm_dir}_ali_${train_set}   
+ali_dir=${gmm_dir}_ali_${train_set}
 lats_dir=${gmm_dir}_lats_${train_set}
 treedir=exp/chain${cleanup_affix:+_$cleanup_affix}/tri3_tree
 lang=data/lang_chain
@@ -138,12 +138,12 @@ if [ $stage -le 13 ]; then
   # Build a tree using our new topology.
   steps/nnet3/chain/build_tree.sh --frame-subsampling-factor 3 \
       --leftmost-questions-truncate $leftmost_questions_truncate \
-      --cmd "$train_cmd" 4000 data/$train_set $lang $ali_dir $treedir
+      --cmd "$train_cmd" 4000 data/${train_set} $lang $ali_dir $treedir
 fi
 
 if [ -z "$extractor" ]; then
   ivector_base_dir=exp/nnet3${cleanup_affix:+_$cleanup_affix}
-else 
+else
   ivector_base_dir=`dirname $extractor`
 fi
 
