@@ -26,7 +26,8 @@ top_n_words_weight=1.0  # this weight is before renormalization; it can be more
 min_words_per_graph=100  # Utterances will be grouped so that they have at least
                          # this many words, before making the graph.
 stage=0
-lm_opts=   # Additional options to make_biased_lm.py.
+lm_opts=   # Additional options to be passed make_one_biased_lm.py,
+           # e.g. --discounting-constant or --min-lm-state-count.
 
 # End configuration options.
 
@@ -35,12 +36,13 @@ echo "$0 $@"  # Print the command line for logging
 [ -f path.sh ] && . ./path.sh # source the path.
 . parse_options.sh || exit 1;
 
-if [ $# != 4 ]; then
-   echo "usage: $0 <data-dir> <lang-dir> <src-dir> <dir>"
-   echo "e.g.:  $0 data/train data/lang exp/tri1 exp/tri1/fsts"
+if [ $# != 3 ]; then
+   echo "usage: $0 <data-dir> <lang-dir> <dir>"
+   echo "e.g.:  $0 data/train data/lang exp/tri3_cleanup"
    echo "  This script creates biased decoding graphs per utterance (or possibly"
    echo "  groups of utterances, depending on --min-words-per-graph).  Its output"
-   echo "  goes to <dir>/HCLG.fsts.scp, indexed by utterance."
+   echo "  goes to <dir>/HCLG.fsts.scp, indexed by utterance.  Directory <dir> is"
+   echo "  required to be a model or alignment directory, containing 'tree' and 'final.mdl'."
    echo "Main options (for others, see top of script file)"
    echo "  --scale-opts <scale-opts>                 # Options relating to language"
    echo "                                            # model scale; default is "
@@ -59,11 +61,10 @@ fi
 
 data=$1
 lang=$2
-model_dir=$3
-dir=$4
+dir=$3
 
 
-for f in $lang/oov.int $model_dir/tree $model_dir/final.mdl \
+for f in $lang/oov.int $dir/tree $dir/final.mdl \
     $lang/L_disambig.fst $lang/phones/disambig.int; do
   [ ! -f $f ] && echo "$0: expected file $f to exist" && exit 1;
 done
@@ -106,10 +107,10 @@ if [ $stage -le 1 ]; then
 
   $cmd JOB=1:$nj $dir/log/compile_decoding_graphs.JOB.log \
     utils/sym2int.pl --map-oov $oov -f 2- $lang/words.txt $sdata/JOB/text \| \
-    python steps/cleanup/make_biased_lms.py --min-words-per-graph=$min_words_per_graph \
+    steps/cleanup/make_biased_lms.py --min-words-per-graph=$min_words_per_graph \
       --lm-opts="--word-disambig-symbol=$word_disambig_symbol $lm_opts" $dir/fsts/utt2group.JOB \| \
     compile-train-graphs-fsts $scale_opts --read-disambig-syms=$lang/phones/disambig.int \
-      $model_dir/tree $model_dir/final.mdl $lang/L_disambig.fst ark:- \
+      $dir/tree $dir/final.mdl $lang/L_disambig.fst ark:- \
     ark,scp:$dir/fsts/HCLG.fsts.JOB.ark,$dir/fsts/HCLG.fsts.JOB.scp || exit 1
 fi
 
@@ -124,6 +125,7 @@ utils/apply_map.pl -f 2 $dir/fsts/HCLG.fsts.per_utt.scp <$dir/fsts/utt2group > $
 
 n1=$(cat $data/utt2spk | wc -l)
 n2=$(cat $dir/HCLG.fsts.scp | wc -l)
+
 
 if [ $[$n1*9] -gt $[$n2*10] ]; then
   echo "$0: too many utterances have no scp, something seems to have gone wrong."

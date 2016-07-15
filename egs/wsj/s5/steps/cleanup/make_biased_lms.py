@@ -8,7 +8,7 @@ import subprocess
 from collections import defaultdict
 
 parser = argparse.ArgumentParser(description="""
-This script is a wrapper for make_biased_lm.py that reads a Kaldi archive
+This script is a wrapper for make_one_biased_lm.py that reads a Kaldi archive
 of (integerized) text data from the standard input and writes a Kaldi archive of
 backoff-language-model FSTs to the standard-output.  It takes care of
 grouping utterances to respect the --min-words-per-graph option.  It writes
@@ -16,7 +16,7 @@ the graphs to the standard output and also outputs a map from input utterance-id
 to the per-group utterance-ids that index the output graphs.""")
 
 parser.add_argument("--lm-opts", type = str, default = "",
-                    help = "Options to pass in to make_biased_lm.py (which "
+                    help = "Options to pass in to make_one_biased_lm.py (which "
                     "creates the individual LM graphs), e.g. '--word-disambig-symbol=8721'.")
 parser.add_argument("--min-words-per-graph", type = int, default = 100,
                     help = "Minimum number of words per utterance group; this program "
@@ -54,7 +54,7 @@ def ProcessGroupOfLines(group_of_lines):
     sys.stdout.flush()
 
     try:
-        command = "steps/cleanup/make_biased_lm.py " + args.lm_opts
+        command = "steps/cleanup/make_one_biased_lm.py " + args.lm_opts
         p = subprocess.Popen(command, shell = True, stdin = subprocess.PIPE,
                             stdout = sys.stdout, stderr = sys.stderr)
         for line in group_of_lines:

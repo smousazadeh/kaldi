@@ -30,9 +30,11 @@ echo "$0 $@"  # Print the command line for logging
 . parse_options.sh || exit 1;
 
 if [ $# != 3 ]; then
-   echo "This is a special decoding script for segmentation where we use one"
+   echo " This is a special decoding script for segmentation where we use one"
    echo "decoding graph for each segment. We assume a file HCLG.fsts.scp exists"
    echo "which is the scp file of the graphs for each segment."
+   echo " Note: this script does not estimate fMLLR transforms; you have to use"
+   echo "the --transform-dir option if you want to use fMLLR."
    echo ""
    echo "Usage: $0 [options] <graph-dir> <data-dir> <decode-dir>"
    echo " e.g.: $0 exp/tri2b/graph_train_si284_split \\"
@@ -60,16 +62,18 @@ graphdir=$1
 data=$2
 dir=$3
 
+mkdir -p $dir/log
+
 if [ -e $dir/final.mdl ]; then
   srcdir=$dir
 elif [ -e $dir/../final.mdl ]; then
   srcdir=$(dirname $dir)
 else
   echo "$0: expected either $dir/final.mdl or $dir/../final.mdl to exist"
+  exit 1
 fi
 sdata=$data/split$nj;
 
-mkdir -p $dir/log
 [[ -d $sdata && $data/feats.scp -ot $sdata ]] || split_data.sh $data $nj || exit 1;
 echo $nj > $dir/num_jobs
 
@@ -111,10 +115,20 @@ case $feat_type in
 esac
 if [ ! -z "$transform_dir" ]; then # add transforms to features...
   echo "Using fMLLR transforms from $transform_dir"
-  [ ! -f $transform_dir/trans.1 ] && echo "Expected $transform_dir/trans.1 to exist."
-  [ "`cat $transform_dir/num_jobs`" -ne $nj ] && \
-     echo "Mismatch in number of jobs with $transform_dir";
-  feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark:$transform_dir/trans.JOB ark:- ark:- |"
+  [ ! -f $transform_dir/trans.1 ] && echo "Expected $transform_dir/trans.1 to exist" && exit 1
+  [ ! -s $transform_dir/num_jobs ] && \
+    echo "$0: expected $transform_dir/num_jobs to contain the number of jobs." && exit 1;
+  nj_orig=$(cat $transform_dir/num_jobs)
+  if [ $nj -ne $nj_orig ]; then
+    # Copy the transforms into an archive with an index.
+    echo "$0: num-jobs for transforms mismatches, so copying them."
+    for n in $(seq $nj_orig); do cat $transform_dir/trans.$n; done | \
+       copy-feats ark:- ark,scp:$dir/trans.ark,$dir/trans.scp || exit 1;
+    feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk scp:$dir/trans.scp ark:- ark:- |"
+  else
+    # number of jobs matches with alignment dir.
+    feats="$feats transform-feats --utt2spk=ark:$sdata/JOB/utt2spk ark:$transform_dir/trans.JOB ark:- ark:- |"
+  fi
 fi
 
 if [ $stage -le 0 ]; then

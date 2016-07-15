@@ -690,8 +690,8 @@ def FloatToString(f):
 # Gives time in string form as an exact multiple of the frame-length, e.g. 0.01
 # (after rounding).
 def TimeToString(time, frame_length):
-    assert time >= 0
     n = round(time / frame_length)
+    assert n >= 0
     # The next function call will remove trailing zeros while printing it, so
     # that e.g. 0.01 will be printed as 0.01 and not 0.0099999999999999.  It
     # seems that doing this in a simple way is not really possible (at least,

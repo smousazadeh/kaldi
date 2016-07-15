@@ -83,8 +83,8 @@ if [ $stage -le 1 ]; then
     ark,t:- \| utils/int2sym.pl -f 2- $lang/words.txt '>' $dir/oracle_hyp.JOB.txt || exit 1;
 
   echo -n "lattice_oracle_align.sh: overall oracle %WER is: "
-  grep 'Overall %WER'  $dir/log/oracle_hyp.*.log  | \
-    perl -e 'while (<>){ if (m: (\d+) / (\d+):) { $x += $1; $y += $2}  printf("%.2f%%\n", $x*100.0/$y); '
+  grep 'Overall %WER'  $dir/log/get_oracle.*.log  | \
+    perl -e 'while (<>){ if (m: (\d+) / (\d+):) { $x += $1; $y += $2}}  printf("%.2f%%\n", $x*100.0/$y); '
 
   # the awk commands below are to ensure that partially-written files don't confuse us.
   for x in $(seq $nj); do cat $dir/oracle_hyp.$x.txt; done | awk '{if(NF>=1){print;}}' > $dir/oracle_hyp.txt

@@ -18,7 +18,7 @@ if [ $# != 1 ]; then
   echo "e.g.:"
   echo " $0 data/train"
   echo "This script prints the frame-shift (e.g. 0.01) to the standard out."
-  echo "If <datadir> does not contain utt2dur, this script will call utils/data/get_utt2dur.sh,"
+  echo "If <datadir> does not contain utt2dur, this script may call utils/data/get_utt2dur.sh,"
   echo "which will require write permission to <datadir>"
   exit 1
 fi
@@ -26,6 +26,12 @@ fi
 export LC_ALL=C
 
 dir=$1
+
+
+if [ ! -e $dir/wav.scp ]; then
+  echo "$0: $dir/wav.scp does not exist; assuming a frame shift of 0.01." 1>&2
+  echo 0.01
+fi
 
 if [ ! -s $dir/utt2dur ]; then
   echo "$0: $dir/utt2dur does not exist: creating it" 1>&2

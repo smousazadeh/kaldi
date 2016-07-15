@@ -92,7 +92,7 @@ class NgramCounts:
         try:
             words = [self.bos_symbol] + [ int(x) for x in line.split() ] + [self.eos_symbol]
         except:
-            sys.exit("make_biased_lm.py: bad input line {0} (expected a sequence "
+            sys.exit("make_one_biased_lm.py: bad input line {0} (expected a sequence "
                      "of integers)".format(line))
 
         for n in range(1, len(words)):
@@ -110,7 +110,7 @@ class NgramCounts:
             self.AddRawCountsFromLine(line)
             lines_processed += 1
         if lines_processed == 0 or args.verbose > 0:
-            print("make_biased_lm.py: processed {0} lines of input".format(
+            print("make_one_biased_lm.py: processed {0} lines of input".format(
                     lines_processed), file = sys.stderr)
 
 
@@ -197,7 +197,7 @@ class NgramCounts:
         try:
             f = open(top_words_file)
         except:
-            sys.exit("make_biased_lm.py: error opening top-words file: "
+            sys.exit("make_one_biased_lm.py: error opening top-words file: "
                      "--top-words=" + top_words_file)
         while True:
             line = f.readline()
@@ -210,7 +210,7 @@ class NgramCounts:
                 assert word_index > 0 and prob > 0.0
                 word_to_count[word_index] += prob * total
             except Exception as e:
-                sys.exit("make_biased_lm.py: could not make sense of the "
+                sys.exit("make_one_biased_lm.py: could not make sense of the "
                          "line '{0}' in op-words file: {1} ".format(line, str(e)))
         f.close()
 
@@ -306,4 +306,4 @@ ngram_counts.PrintAsFst(args.word_disambig_symbol)
 
 
 # test comand:
-# (echo 6 7 8 4; echo 7 8 9; echo 7 8) | ./make_biased_lm.py --word-disambig-symbol=1000 --min-lm-state-count=2 --verbose=3 --top-words=<(echo 1 0.5; echo 2 0.25)
+# (echo 6 7 8 4; echo 7 8 9; echo 7 8) | ./make_one_biased_lm.py --word-disambig-symbol=1000 --min-lm-state-count=2 --verbose=3 --top-words=<(echo 1 0.5; echo 2 0.25)
