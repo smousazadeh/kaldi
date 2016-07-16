@@ -28,7 +28,7 @@ case $mic in
   sdm) [ -z "$mics" -o ! -z "${mics#[1-8]}" ] && echo 'Select microphone by --mics "N", (N=1..8)' && exit 1
     echo "Selected microphone '$mics'"
   ;;
-  *) echo "Wrong 'mic' option $mic" && exit 1 
+  *) echo "Wrong 'mic' option $mic" && exit 1
   ;;
 esac
 
@@ -80,7 +80,7 @@ done < $wdir/ami_meet_ids.flist
 chmod +x $wgetfile
 echo "Downloading audio files for $mic scenario."
 echo "Look at $wdir/log/download_ami_$mic.log for progress"
-$wgetfile &> $wdir/log/download_ami_$mic.log 
+$wgetfile &> $wdir/log/download_ami_$mic.log
 
 # Do rough check if #wavs is as expected, it will fail anyway in data prep stage if it isn't,
 if [ "$mic" == "ihm" ]; then

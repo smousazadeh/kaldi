@@ -26,12 +26,17 @@ esac
 final_lm=`cat data/local/lm/final_lm`
 LM=$final_lm.pr1-7
 
-# Download AMI corpus, You need arount 130GB of free space to get whole data ihm+mdm,
-# Avoiding re-download, using 'wget --continue ...',
+# Download AMI corpus, You need around 130GB of free space to get whole data ihm+mdm,
 if [ $stage -le 0 ]; then
-  [ -e data/local/downloads/wget_$mic.sh ] && \
-    echo "$data/local/downloads/wget_$mic.sh already exists, better quit than re-download... (use --stage N)" && \
+  if [ -d $AMI_DIR ] && ! touch $AMI_DIR/.foo 2>/dev/null; then
+    echo "$0: directory $AMI_DIR seems to exist and not be owned by you."
+    echo " ... Assuming the data does not need to be downloaded.  Please use --stage 1 or more."
     exit 1
+  fi
+  if [ -e data/local/downloads/wget_$mic.sh ]; then
+    echo "data/local/downloads/wget_$mic.sh already exists, better quit than re-download... (use --stage N)"
+    exit 1
+  fi
   local/ami_download.sh $mic $AMI_DIR
 fi
 
