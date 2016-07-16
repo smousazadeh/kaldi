@@ -3,18 +3,18 @@
 # Copyright 2016  Vimal Manohar
 # Apache 2.0
 
-# This script demonstrates how to re-segment training data selecting only the 
+# This script demonstrates how to re-segment training data selecting only the
 # "good" audio that matches the transcripts.
 # The basic idea is to decode with an existing in-domain acoustic model, and a
 # biased language model built from the reference, and then work out the
 # segmentation from a ctm like file.
 
-# For nnet3 and chain results after cleanup, see the scripts in 
-# local/nnet3/run_tdnn.sh and local/chain/run_tdnn.sh 
+# For nnet3 and chain results after cleanup, see the scripts in
+# local/nnet3/run_tdnn.sh and local/chain/run_tdnn.sh
 
 
 # GMM Results for speaker-independent (SI) and speaker adaptive training (SAT) systems on dev and test sets
-  
+
 # Baseline
 
 # SI systems:
@@ -41,76 +41,43 @@
 ## %WER 67.2 | 13545 89993 | 37.2 37.0 25.9 4.4 67.2 75.0 | 0.374 | exp/sdm1/tri4a_cleaned_ah/decode_eval_ami_fsh.o3g.kn.pr1-7/ascore_13/eval_o4.ctm.filt.sys
 
 
-set -e 
-set -o pipefail 
+set -e
+set -o pipefail
 set -u
 
 stage=0
 cleanup_stage=0
 mic=ihm
-use_ihm_ali=false
-
-lm_affix=lm_a
-
-pad_length=5                  # Number of frames for padding the created 
-                              # subsegments
-max_silence_length=100        # Maxium number of silence frames above which they are removed and the segment is split
-silence_padding_correct=5     # The amount of silence frames to pad a segment by 
-                              # if the silence is next to a correct hypothesis word
-silence_padding_incorrect=20  # The amount of silence frames to pad a segment by 
-                              # if the silence is next to an incorrect hypothesis word
 
 cleanup_affix=cleaned
 nj=50
+gmm=tri4a  # temp-- will make this tri4a.
+data=data/$mic/train
+lang=data/lang
+srcdir=exp/$mic/$gmm
+dir=exp/$mic/${gmm}_${cleanup_affix}
+cleaned_data=${data}_${cleanup_affix}
 
 . ./path.sh
 . ./cmd.sh
-. utils/parse_options.sh 
-
-# Set the variables. These are based on variables set by run_ivector_common.sh
-gmm=tri4a
-if [ $use_ihm_ali == "true" ]; then
-  gmm_dir=exp/ihm/$gmm
-  mic=${mic}_cleanali
-else
-  gmm_dir=exp/$mic/$gmm
-fi
-
-bad_utts_dir=${gmm_dir}_${mic}_train_split_bad_utts # added mic in name as this can be ihm directory where parallel mdm and sdm utts are written
-
-ngram_order=2
-top_n_words=100
-
-lm_affix="${lm_affix:+${lm_affix}_}o$ngram_order"
-if [ $ngram_order -eq 1 ]; then
-  lm_affix=${lm_affix}_top$top_n_words
-fi
-
-bad_utts_dir=${bad_utts_dir}_${lm_affix}
+. utils/parse_options.sh
 
 
 if [ $stage -le 1 ]; then
-  steps/cleanup/do_cleanup_segmentation.sh \
-    --cmd "$train_cmd" --nj $nj \
-    --stage $cleanup_stage \
-    --pad-length $pad_length \
-    --max-silence-length $max_silence_length \
-    --silence-padding-correct $silence_padding_correct \
-    --silence-padding-incorrect $silence_padding_incorrect \
-    --max-incorrect-words 0 \
-    data/$mic/train data/lang exp/$mic/tri4a \
-    $bad_utts_dir $bad_utts_dir/segmentation_${cleanup_affix} \
-    data/$mic/train_${cleanup_affix}
+  # This does the actual data cleanup.
+  steps/cleanup/clean_and_segment_data.sh --stage $cleanup_stage --nj $nj --cmd "$train_cmd" \
+    $data $lang $srcdir $dir $cleaned_data
 fi
+
 
 if [ $stage -le 2 ]; then
   steps/align_fmllr.sh --nj $nj --cmd "$train_cmd" \
-    data/$mic/train_${cleanup_affix} data/lang exp/$mic/tri3a exp/$mic/tri3a_ali_${cleanup_affix}-fmllr
+    data/$mic/train_${cleanup_affix} data/lang exp/$mic/tri3a exp/$mic/tri3a_ali_${cleanup_affix}
 fi
 
 if [ $stage -le 3 ]; then
   steps/train_sat.sh --cmd "$train_cmd" \
-    5000 80000 data/$mic/train_${cleanup_affix} data/lang exp/$mic/tri3a_ali_${cleanup_affix}-fmllr exp/$mic/tri4a_${cleanup_affix}
+    5000 80000 data/$mic/train_${cleanup_affix} data/lang exp/$mic/tri3a_ali_${cleanup_affix} exp/$mic/tri4a_${cleanup_affix}
 fi
 
 [ ! -r data/local/lm/final_lm ] && echo "Please, run 'run_prepare_shared.sh' first!" && exit 1
