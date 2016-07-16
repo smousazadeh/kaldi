@@ -58,12 +58,15 @@ for f in $lang/oov.int $lang/words.txt $data/text $latdir/lat.1.gz $latdir/num_j
   [ ! -f $f ] && echo "$0: expected file $f to exist" && exit 1;
 done
 
+mkdir -p $dir/log
+
 if [ -e $dir/final.mdl ]; then
   model=$dir/final.mdl
 elif [ -e $dir/../final.mdl ]; then
   model=$dir/../final.mdl
 else
   echo "$0: expected $dir/final.mdl or $dir/../final.mdl to exist"
+  exit 1
 fi
 
 nj=$(cat $latdir/num_jobs)
@@ -72,8 +75,6 @@ oov=$(cat $lang/oov.int)
 utils/split_data.sh --per-utt $data $nj
 
 sdata=$data/split$nj
-
-mkdir -p $dir/log
 
 if [ $stage -le 1 ]; then
   $cmd JOB=1:$nj $dir/log/get_oracle.JOB.log \

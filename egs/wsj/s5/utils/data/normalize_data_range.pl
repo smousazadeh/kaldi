@@ -68,6 +68,14 @@ while (<>) {
     $before_range = $`;
     $first_range = $1;   # e.g. '0:500,20:21', or '0:500', or ',0:13'.
     $second_range = $2;  # has same general format as first_range.
+    if ($_ =~ m/concat-feats /) {
+      # sometimes in scp files, we use the command concat-feats to splice together
+      # two feature matrices.  Handling this correctly is complicated and we don't
+      # anticipate needing it, so we just refuse to process this type of data.
+      print "normalize_data_range.pl: this script cannot [yet] normalize the data ranges " .
+        "if concat-feats was in the input data\n";
+      exit(1);
+    }
     print STDERR "matched: $before_range $first_range $second_range\n";
     if ($first_range !~ m/^((\d*):(\d*)|)(,(\d*):(\d*)|)$/) {
       print STDERR "normalize_data_range.pl: could not make sense of input line $_";
