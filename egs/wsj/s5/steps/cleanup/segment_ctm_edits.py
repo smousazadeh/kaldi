@@ -22,9 +22,13 @@ parser = argparse.ArgumentParser(
     "steps/cleanup/get_ctm_edits.py, steps/cleanup/modify_ctm_edits.py and "
     "steps/cleanup/taint_ctm_edits.py.")
 
-parser.add_argument("--min-segment-length", type = float, default = 1.0,
-                    help = "Minimum allowed segment length (in seconds); shorter "
-                    "segments than this will be discarded.")
+parser.add_argument("--min-segment-length", type = float, default = 0.5,
+                    help = "Minimum allowed segment length (in seconds) for any "
+                    "segment; shorter segments than this will be discarded.")
+parser.add_argument("--min-new-segment-length", type = float, default = 1.0,
+                    help = "Minimum allowed segment length (in seconds) for newly "
+                    "created segments (i.e. not identical to the input utterances)"
+                    "Expected to be >= --min-segment-length.")
 parser.add_argument("--frame-length", type = float, default = 0.01,
                     help = "This only affects rounding of the output times; they will "
                     "be constrained to multiples of this value.")
@@ -36,7 +40,7 @@ parser.add_argument("--max-edge-silence-length", type = float, default = 0.5,
                     help = "Maximum allowed length of silence if it appears at the "
                     "edge of a segment (will be truncated).  This rule is "
                     "relaxed if such truncation would take a segment below "
-                    "the --min-segment-length.")
+                    "the --min-segment-length or --min-new-segment-length.")
 parser.add_argument("--max-edge-non-scored-length", type = float, default = 0.5,
                     help = "Maximum allowed length of a non-scored word (noise, cough, etc.) "
                     "if it appears at the edge of a segment (will be truncated). "
@@ -285,7 +289,7 @@ class Segment:
     # non-scored words at the segment boundaries if they are longer than the
     # --max-edge-silence-length and --max-edge-non-scored-length respectively
     # (and to the extent that this wouldn't take us below the
-    # --min-segment-length).
+    # --min-segment-length or --min-new-segment-length).
     def PossiblyTruncateBoundaries(self):
         for b in [True, False]:
             if b:
@@ -309,6 +313,59 @@ class Segment:
                     self.start_keep_proportion = keep_proportion
                 else:
                     self.end_keep_proportion = keep_proportion
+
+    # This relaxes the segment-boundary truncation of
+    # PossiblyTruncateBoundaries(), if it would take us below
+    # min-new-segment-length or min-segment-length.  Note: this does not relax
+    # the boundary truncation for a particular boundary (start or end) if that
+    # boundary corresponds to a 'tainted' line of the ctm (because it's
+    # dangerous to include too much 'tainted' audio).
+    def RelaxBoundaryTruncation(self):
+        # this should be called before adding unk padding.
+        assert self.start_unk_padding == self.end_unk_padding == 0.0
+        if self.start_keep_proportion == self.end_keep_proportion == 1.0:
+            return  # nothing to do there was no truncation.
+        length_cutoff = max(args.min_new_segment_length, args.min_segment_length)
+        length_with_truncation = self.Length()
+        if length_with_truncation >= length_cutoff:
+            return  # Nothing to do.
+        orig_start_keep_proportion = self.start_keep_proportion
+        orig_end_keep_proportion = self.end_keep_proportion
+        if not IsTainted(self.split_lines_of_utt[self.start_index]):
+            self.start_keep_proportion = 1.0
+        if not IsTainted(self.split_lines_of_utt[self.end_index - 1]):
+            self.end_keep_proportion = 1.0
+        length_with_relaxed_boundaries = self.Length()
+        if length_with_relaxed_boundaries <= length_cutoff:
+            # Completely undo the truncation [to the extent allowed by the
+            # presence of tainted lines at the start/end] if, even without
+            # truncation, we'd be below the length cutoff.  This segment may be
+            # removed later on (but it may not, if removing truncation makes us
+            # identical to the input utterance, and the length is between
+            # min_segment_length min_new_segment_length).
+            return
+        # Next, compute an interpolation constant a such that the
+        # {start,end}_keep_proportion values will equal a *
+        # [values-computed-by-PossiblyTruncateBoundaries()] + (1-a) * [completely-relaxed-values].
+        # we're solving the equation:
+        # length_cutoff = a * length_with_truncation + (1-a) * length_with_relaxed_boundaries
+        # -> length_cutoff - length_with_relaxed_boundaries =
+        #        a * (length_with_truncation - length_with_relaxed_boundaries)
+        # -> a = (length_cutoff - length_with_relaxed_boundaries) / (length_with_truncation - length_with_relaxed_boundaries)
+        a = (length_cutoff - length_with_relaxed_boundaries) / \
+            (length_with_truncation - length_with_relaxed_boundaries)
+        if a < 0.0 or a > 1.0:
+            print("segment_ctm_edits.py: bad 'a' value = {0}".format(a), file = sys.stderr)
+            return
+        self.start_keep_proportion = \
+           a * orig_start_keep_proportion + (1-a) * self.start_keep_proportion
+        self.end_keep_proportion = \
+           a * orig_end_keep_proportion + (1-a) * self.end_keep_proportion
+        if not abs(self.Length() - length_cutoff) < 0.01:
+            print("segment_ctm_edits.py: possible problem relaxing boundary "
+                  "truncation, length is {0} vs {1}".format(self.Length(), length_cutoff),
+                  file = sys.stderr)
+
 
     # This is stage 4 of segment processing.
     # This function may set start_unk_padding and end_unk_padding to nonzero
@@ -424,6 +481,15 @@ class Segment:
     # Returns the segment length in seconds.
     def Length(self):
         return self.EndTime() - self.StartTime()
+
+    def IsWholeUtterance(self):
+        # returns true if this segment corresponds to the whole utterance that
+        # it's a part of (i.e. its start/end time are zero and the end-time of
+        # the last segment.
+        last_line_of_utt = self.split_lines_of_utt[-1]
+        last_line_end_time = float(last_line_of_utt[2]) + float(last_line_of_utt[3])
+        return abs(self.StartTime() - 0.0) < 0.001 and \
+               abs(self.EndTime() - last_line_end_time) < 0.001
 
     # Returns the proportion of the duration of this segment that consists of
     # unk-padding and tainted lines of input (will be between 0.0 and 1.0).
@@ -622,8 +688,20 @@ def GetSegmentsForUtterance(split_lines_of_utt):
         s.PossiblyTruncateBoundaries()
     AccumulateSegmentStats(segments, 'stage  3 [truncate boundaries]')
     for s in segments:
+        s.RelaxBoundaryTruncation()
+    AccumulateSegmentStats(segments, 'stage  4 [relax boundary truncation]')
+    for s in segments:
         s.PossiblyAddUnkPadding()
-    AccumulateSegmentStats(segments, 'stage  4 [unk-padding]')
+    AccumulateSegmentStats(segments, 'stage  5 [unk-padding]')
+
+
+    new_segments = []
+    for s in segments:
+        # the 0.999 allows for roundoff error.
+        if not (s.IsWholeUtterance() and s.Length() < 0.999 * args.min_new_segment_length):
+            new_segments.append(s)
+    segments = new_segments
+    AccumulateSegmentStats(segments, 'stage  6 [remove new segments under --min-new-segment-length')
 
     new_segments = []
     for s in segments:
@@ -631,29 +709,29 @@ def GetSegmentsForUtterance(split_lines_of_utt):
         if s.Length() >= 0.999 * args.min_segment_length:
             new_segments.append(s)
     segments = new_segments
-    AccumulateSegmentStats(segments, 'stage  5 [remove segments under --min-segment-length]')
+    AccumulateSegmentStats(segments, 'stage  7 [remove segments under --min-segment-length')
 
     for s in segments:
         s.PossiblyTruncateStartForJunkProportion()
-    AccumulateSegmentStats(segments, 'stage  6 [truncate segment-starts for --max-junk-proportion')
+    AccumulateSegmentStats(segments, 'stage  8 [truncate segment-starts for --max-junk-proportion')
 
     for s in segments:
         s.PossiblyTruncateEndForJunkProportion()
-    AccumulateSegmentStats(segments, 'stage  7 [truncate segment-ends for --max-junk-proportion')
+    AccumulateSegmentStats(segments, 'stage  9 [truncate segment-ends for --max-junk-proportion')
 
     new_segments = []
     for s in segments:
         if s.ContainsAtLeastOneScoredNonOovWord():
             new_segments.append(s)
     segments = new_segments
-    AccumulateSegmentStats(segments, 'stage  8 [remove segments without scored,non-OOV words]')
+    AccumulateSegmentStats(segments, 'stage 10 [remove segments without scored,non-OOV words]')
 
     new_segments = []
     for s in segments:
         if s.JunkProportion() <= args.max_junk_proportion:
             new_segments.append(s)
     segments = new_segments
-    AccumulateSegmentStats(segments, 'stage  9 [remove segments with junk exceeding --max-junk-proportion]')
+    AccumulateSegmentStats(segments, 'stage 11 [remove segments with junk exceeding --max-junk-proportion]')
 
     new_segments = []
     if len(segments) > 0:
@@ -664,7 +742,7 @@ def GetSegmentsForUtterance(split_lines_of_utt):
             else:
                 new_segments.append(segments[i])
     segments = new_segments
-    AccumulateSegmentStats(segments, 'stage 10 [merge overlapping or touching segments]')
+    AccumulateSegmentStats(segments, 'stage 12 [merge overlapping or touching segments]')
 
     for i in range(len(segments) - 1):
         if segments[i].EndTime() > segments[i+1].StartTime():
@@ -798,7 +876,8 @@ def PrintWordStats(word_stats_out):
     print("segment_ctm_edits.py: please see the file {0} for word-level statistics "
           "saying how frequently each word was excluded for a segment; format is "
           "<word> <proportion-of-time-excluded> <total-count>.  Particularly "
-          "problematic words appear near the top of the file.", file = sys.stderr)
+          "problematic words appear near the top of the file.".format(word_stats_out),
+          file = sys.stderr)
 
 
 def ProcessData():

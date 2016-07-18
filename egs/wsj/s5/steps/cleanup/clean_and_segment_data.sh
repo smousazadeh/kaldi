@@ -16,6 +16,7 @@ stage=0
 
 cmd=run.pl
 nj=4
+segmentation_opts=
 
 . ./path.sh
 . utils/parse_options.sh
@@ -41,7 +42,11 @@ if [ $# -ne 5 ]; then
   echo "  --cmd '$cmd'            # command to submit jobs with (e.g. run.pl, queue.pl)"
   echo "  --nj <n>                # number of parallel jobs to use in graph creation and"
   echo "                          # decoding"
+  echo "  --segmentation-opts 'opts'  # Additional options to segment_ctm_edits.py."
+  echo "                              # Please run steps/cleanup/segment_ctm_edits.py"
+  echo "                              # without arguments to see allowed options."
   exit 1
+
 fi
 
 data=$1
@@ -138,7 +143,9 @@ if [ $stage -le 7 ]; then
   echo "$0: creating segmentation from ctm-edits file."
 
   $cmd $dir/log/segment_ctm_edits.log \
-    steps/cleanup/segment_ctm_edits.py --oov-symbol-file=$lang/oov.txt \
+    steps/cleanup/segment_ctm_edits.py \
+       $segmentation_opts \
+       --oov-symbol-file=$lang/oov.txt \
       --ctm-edits-out=$dir/ctm_edits.segmented \
       --word-stats-out=$dir/word_stats.txt \
    $dir/non_scored_words.txt \
@@ -148,7 +155,7 @@ if [ $stage -le 7 ]; then
   echo " ... see $dir/log/segment_ctm_edits.log"
   echo "For word-level statistics on p(not-being-in-a-segment), with 'worst' words at the top,"
   echo "see $dir/word_stats.txt"
-  echo "For detailed utterance-level debugging information, see $dir/ctm_edits.segmented."
+  echo "For detailed utterance-level debugging information, see $dir/ctm_edits.segmented"
 fi
 
 
