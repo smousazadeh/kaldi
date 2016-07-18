@@ -660,6 +660,8 @@ def PrintSegmentStats():
 
 # This function creates the segments for an utterance as a list
 # of class Segment.
+# It returns a 2-tuple (list-of-segments, list-of-deleted-segments)
+# where the deleted segments are only useful for diagnostic printing.
 # Note: split_lines_of_utt is a list of lists, one per line, each containing the
 # sequence of fields.
 def GetSegmentsForUtterance(split_lines_of_utt):
@@ -694,11 +696,14 @@ def GetSegmentsForUtterance(split_lines_of_utt):
         s.PossiblyAddUnkPadding()
     AccumulateSegmentStats(segments, 'stage  5 [unk-padding]')
 
-
+    deleted_segments = []
     new_segments = []
     for s in segments:
         # the 0.999 allows for roundoff error.
-        if not (s.IsWholeUtterance() and s.Length() < 0.999 * args.min_new_segment_length):
+        if (not s.IsWholeUtterance() and s.Length() < 0.999 * args.min_new_segment_length):
+            s.debug_str += '[deleted-because-of--min-new-segment-length]'
+            deleted_segments.append(s)
+        else:
             new_segments.append(s)
     segments = new_segments
     AccumulateSegmentStats(segments, 'stage  6 [remove new segments under --min-new-segment-length')
@@ -706,7 +711,10 @@ def GetSegmentsForUtterance(split_lines_of_utt):
     new_segments = []
     for s in segments:
         # the 0.999 allows for roundoff error.
-        if s.Length() >= 0.999 * args.min_segment_length:
+        if s.Length() < 0.999 * args.min_segment_length:
+            s.debug_str += '[deleted-because-of--min-segment-length]'
+            deleted_segments.append(s)
+        else:
             new_segments.append(s)
     segments = new_segments
     AccumulateSegmentStats(segments, 'stage  7 [remove segments under --min-segment-length')
@@ -723,13 +731,22 @@ def GetSegmentsForUtterance(split_lines_of_utt):
     for s in segments:
         if s.ContainsAtLeastOneScoredNonOovWord():
             new_segments.append(s)
+        else:
+            s.debug_str += '[deleted-because-no-scored-non-oov-words]'
+            deleted_segments.append(s)
+
     segments = new_segments
     AccumulateSegmentStats(segments, 'stage 10 [remove segments without scored,non-OOV words]')
 
     new_segments = []
     for s in segments:
-        if s.JunkProportion() <= args.max_junk_proportion:
+        j = s.JunkProportion()
+        if j <= args.max_junk_proportion:
             new_segments.append(s)
+        else:
+            s.debug_str += '[deleted-because-junk-proportion={0}]'.format(j)
+            deleted_segments.append(s)
+
     segments = new_segments
     AccumulateSegmentStats(segments, 'stage 11 [remove segments with junk exceeding --max-junk-proportion]')
 
@@ -752,7 +769,7 @@ def GetSegmentsForUtterance(split_lines_of_utt):
     if len(segments) == 0:
         num_utterances_without_segments += 1
 
-    return segments
+    return (segments, deleted_segments)
 
 # this prints a number with a certain number of digits after
 # the point, while removing trailing zeros.
@@ -802,7 +819,8 @@ def WriteSegmentsForUtterance(text_output_handle, segments_output_handle,
 # Note, this is destrutive of 'segments_for_utterance', but it won't matter.
 def PrintDebugInfoForUtterance(ctm_edits_out_handle,
                                split_lines_of_cur_utterance,
-                               segments_for_utterance):
+                               segments_for_utterance,
+                               deleted_segments_for_utterance):
     # info_to_print will be list of 2-tuples (time, 'start-segment-n'|'end-segment-n')
     # representing the start or end times of segments.
     info_to_print = []
@@ -812,6 +830,15 @@ def PrintDebugInfoForUtterance(ctm_edits_out_handle,
         info_to_print.append( (segment.StartTime(), start_string) )
         end_string = 'end-segment-' + str(n+1)
         info_to_print.append( (segment.EndTime(), end_string) )
+    # for segments that were deleted we print info like start-deleted-segment-1, and
+    # otherwise similar info to segments that were retained.
+    for n in range(len(deleted_segments_for_utterance)):
+        segment = deleted_segments_for_utterance[n]
+        start_string = 'start-deleted-segment-' + str(n+1) + '[' + segment.DebugInfo() + ']'
+        info_to_print.append( (segment.StartTime(), start_string) )
+        end_string = 'end-deleted-segment-' + str(n+1)
+        info_to_print.append( (segment.EndTime(), end_string) )
+
     info_to_print = sorted(info_to_print)
 
     for i in range(len(split_lines_of_cur_utterance)):
@@ -917,14 +944,16 @@ def ProcessData():
 
     while True:
         if len(split_pending_line) == 0 or split_pending_line[0] != cur_utterance:
-            segments_for_utterance = GetSegmentsForUtterance(split_lines_of_cur_utterance)
+            (segments_for_utterance,
+             deleted_segments_for_utterance) = GetSegmentsForUtterance(split_lines_of_cur_utterance)
             AccWordStatsForUtterance(split_lines_of_cur_utterance, segments_for_utterance)
             WriteSegmentsForUtterance(text_output_handle, segments_output_handle,
                                       cur_utterance, segments_for_utterance)
             if args.ctm_edits_out != None:
                 PrintDebugInfoForUtterance(ctm_edits_output_handle,
                                            split_lines_of_cur_utterance,
-                                           segments_for_utterance)
+                                           segments_for_utterance,
+                                           deleted_segments_for_utterance)
             split_lines_of_cur_utterance = []
             if len(split_pending_line) == 0:
                 break
