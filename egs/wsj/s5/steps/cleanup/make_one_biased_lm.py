@@ -31,7 +31,7 @@ parser.add_argument("--top-words", type = str,
                     "common words to the LM with specified probabilities.")
 parser.add_argument("--discounting-constant", type = float, default = 0.3,
                     help = "Discounting constant D for standard (unmodified) Kneser-Ney; "
-                    "must be strictly between 0 and 1.  A value closer to 1 will give "
+                    "must be strictly between 0 and 1.  A value closer to 0 will give "
                     "you a more-strongly-biased LM.")
 parser.add_argument("--verbose", type = int, default = 0,
                     choices=[0,1,2,3,4,5], help = "Verbose level")
@@ -54,6 +54,7 @@ class NgramCounts:
     ## we'd do as follows:
     ##  self.counts[3][[5,6,7]][8] += 1.0
     ## where the [3] indexes an array, the [[5,6,7]] indexes a dict, and
+    ## the [8] indexes a dict.
     def __init__(self, ngram_order):
         self.ngram_order = ngram_order
         # Integerized counts will never contain negative numbers, so
@@ -115,9 +116,9 @@ class NgramCounts:
 
 
     # This function returns a dict from history (as a tuple of integers of
-    # length > 1, ignoring lower-order histories), to the total count of all
-    # histories equal to or longer than this.  It's used inside
-    # CompletelyDiscountLowCountStates().
+    # length > 1, ignoring lower-order histories), to the total count of this
+    # history state plus all history-states which back off to this history state.
+    # It's used inside CompletelyDiscountLowCountStates().
     def GetHistToTotalCount(self):
         ans = defaultdict(float)
         for n in range(2, self.ngram_order):
@@ -130,7 +131,7 @@ class NgramCounts:
 
 
     # This function will completely discount the counts in any LM-states of
-    # order > 2 (i.e. history-lenght > 1) that have total count below
+    # order > 2 (i.e. history-length > 1) that have total count below
     # 'min_count'; when computing the total counts, we include higher-order
     # LM-states that would back off to 'this' lm-state, in the total.
     def CompletelyDiscountLowCountStates(self, min_count):
@@ -148,7 +149,7 @@ class NgramCounts:
 
 
 
-    # This backs of the counts according to Kneser-Ney (unmodified,
+    # This backs off the counts according to Kneser-Ney (unmodified,
     # with interpolation).
     def ApplyBackoff(self, D):
         assert D > 0.0 and D < 1.0

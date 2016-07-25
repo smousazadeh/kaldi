@@ -95,7 +95,7 @@ fi
 
 
 mkdir -p $dir/split_fsts
-utils/filter_scps.pl -f 1 JOB=1:$nj $sdata/JOB/feats.scp $graphdir/HCLG.fsts.scp $dir/split_fsts/HCLG.fsts.JOB.scp
+utils/filter_scps.pl --no-warn -f 1 JOB=1:$nj $sdata/JOB/feats.scp $graphdir/HCLG.fsts.scp $dir/split_fsts/HCLG.fsts.JOB.scp
 HCLG=scp:$dir/split_fsts/HCLG.fsts.JOB.scp
 
 if [ -f $srcdir/final.mat ]; then feat_type=lda; else feat_type=delta; fi

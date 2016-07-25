@@ -36,6 +36,10 @@ srcdir=$1
 min_seg_len=$2
 dir=$3
 
+if [ "$dir" == "$srcdir" ]; then
+  echo "$0: this script requires <srcdir> and <dir> to be different."
+  exit 1
+fi
 
 for f in $srcdir/utt2spk $srcdir/feats.scp; do
   [ ! -s $f ] && echo "$0: expected file $f to exist and be nonempty" && exit 1
@@ -49,6 +53,11 @@ fi
 if ! mkdir -p $dir; then
   echo "$0: could not create directory $dir"
   exit 1;
+fi
+
+if ! utils/validate_data_dir.sh $srcdir; then
+  echo "$0: failed to validate input directory $srcdir.  If needed, run   utils/fix_data_dir.sh $srcdir"
+  exit 1
 fi
 
 if ! python -c "x=float('$min_seg_len'); assert(x>0.0 and x<100.0);" 2>/dev/null; then

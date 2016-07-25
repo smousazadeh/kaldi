@@ -83,11 +83,11 @@ this_group_of_lines = []  # An array of strings, one per line
 
 while True:
     line = sys.stdin.readline();
-    num_words_this_group += len(line.split()) - 1
+    num_words_this_group += len(line.split())
     if line != '':
         this_group_of_lines.append(line)
-    if (num_words_this_group >= args.min_words_per_graph or
-        line == '' and num_words_this_group > 0):
+    if num_words_this_group >= args.min_words_per_graph or \
+        (line == '' and len(this_group_of_lines) != 0):
         ProcessGroupOfLines(this_group_of_lines)
         num_words_this_group = 0
         this_group_of_lines = []

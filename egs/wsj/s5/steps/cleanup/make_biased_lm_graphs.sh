@@ -17,7 +17,6 @@ set -e
 # Begin configuration section.
 nj=10
 cmd=run.pl
-lm_opts=
 scale_opts="--transition-scale=1.0 --self-loop-scale=0.1"
 top_n_words=100 # Number of common words that we compile into each graph (most frequent
                 # in $data/text.orig.
@@ -26,8 +25,12 @@ top_n_words_weight=1.0  # this weight is before renormalization; it can be more
 min_words_per_graph=100  # Utterances will be grouped so that they have at least
                          # this many words, before making the graph.
 stage=0
-lm_opts=   # Additional options to be passed make_one_biased_lm.py,
-           # e.g. --discounting-constant or --min-lm-state-count.
+
+### options for make_one_biased_lm.py.
+ngram_order=4  # maximum n-gram order to use (but see also --min-lm-state-cout).
+min_lm_state_count=10  # make this smaller (e.g. 2) for more strongly biased LM.
+discounting_constant=0.3  # strictly between 0 and 1.  Make this closer to 0 for
+                          # more strongly biased LM.
 
 # End configuration options.
 
@@ -52,7 +55,17 @@ if [ $# != 3 ]; then
    echo "  --top-n-words-weight <float>              # Weight given to top-n-words portion of graph"
    echo "                                            # (before renormalizing); may be any positive"
    echo "                                            # number (default: 1.0)"
-   echo "  --lm-opts <opts>                          # Additional options to make_biased_lm.py"
+   echo "  --min-words-per-graph <N>                 # A constant that controls grouping of utterances"
+   echo "                                            # (we make the LMs for groups of utterances)."
+   echo "                                            # Default: 100."
+   echo "  --ngram-order <N>                         # N-gram order in range [2,7].  Maximum n-gram order "
+   echo "                                            # that may be used (but also see --min-lm-state-count)."
+   echo "                                            # Default 4"
+   echo "  --min-lm-state-count <N>                  # Minimum state count for an LM-state of order >2 to "
+   echo "                                            # be completely pruned away [bigrams will always be kept]"
+   echo "                                            # Default 10.  Smaller -> more strongly biased LM"
+   echo "  --discounting-constant <float>            # Discounting constant for Kneser-Ney, strictly between 0"
+   echo "                                            # and 1.  Default 0.3.  Smaller -> more strongly biased LM."
    echo "  --config <config-file>                    # config containing options"
    echo "  --nj <nj>                                 # number of parallel jobs"
    echo "  --cmd (utils/run.pl|utils/queue.pl <queue opts>) # how to run jobs."
@@ -96,8 +109,7 @@ fi
 
 utils/split_data.sh --per-utt $data $nj
 
-sdata=$data/split$nj  # caution: we'll have to change this when we
-                      # change how --per-utt works.
+sdata=$data/split${nj}utt
 
 
 mkdir -p $dir/log $dir/fsts
@@ -105,10 +117,13 @@ mkdir -p $dir/log $dir/fsts
 if [ $stage -le 1 ]; then
   echo "$0: creating utterance-group-specific decoding graphs with biased LMs"
 
+  # These options are passed through directly to make_one_biased_lm.py.
+  lm_opts="--word-disambig-symbol=$word_disambig_symbol --ngram-order=$ngram_order --min-lm-state-count=$min_lm_state_count --discounting-constant=$discounting_constant"
+
   $cmd JOB=1:$nj $dir/log/compile_decoding_graphs.JOB.log \
     utils/sym2int.pl --map-oov $oov -f 2- $lang/words.txt $sdata/JOB/text \| \
     steps/cleanup/make_biased_lms.py --min-words-per-graph=$min_words_per_graph \
-      --lm-opts="--word-disambig-symbol=$word_disambig_symbol $lm_opts" $dir/fsts/utt2group.JOB \| \
+      --lm-opts="$lm_opts" $dir/fsts/utt2group.JOB \| \
     compile-train-graphs-fsts $scale_opts --read-disambig-syms=$lang/phones/disambig.int \
       $dir/tree $dir/final.mdl $lang/L_disambig.fst ark:- \
     ark,scp:$dir/fsts/HCLG.fsts.JOB.ark,$dir/fsts/HCLG.fsts.JOB.scp || exit 1

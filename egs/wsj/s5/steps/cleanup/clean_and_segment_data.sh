@@ -15,7 +15,9 @@ set -e -o pipefail
 stage=0
 
 cmd=run.pl
+cleanup=true
 nj=4
+graph_opts=
 segmentation_opts=
 
 . ./path.sh
@@ -45,6 +47,10 @@ if [ $# -ne 5 ]; then
   echo "  --segmentation-opts 'opts'  # Additional options to segment_ctm_edits.py."
   echo "                              # Please run steps/cleanup/segment_ctm_edits.py"
   echo "                              # without arguments to see allowed options."
+  echo "  --graph-opts 'opts'         # Additional options to make_biased_lm_graphs.sh."
+  echo "                              # Please run steps/cleanup/make_biased_lm_graphs.sh"
+  echo "                              # without arguments to see allowed options."
+  echo "  --cleanup        <true|false>  # Clean up intermediate files afterward.  Default true."
   exit 1
 
 fi
@@ -72,7 +78,7 @@ cp $srcdir/{splice_opts,delta_opts,final.mat,final.alimdl} $dir 2>/dev/null || t
 
 if [ $stage -le 1 ]; then
   echo "$0: Building biased-language-model decoding graphs..."
-  steps/cleanup/make_biased_lm_graphs.sh \
+  steps/cleanup/make_biased_lm_graphs.sh $graph_opts \
     --nj $nj --cmd "$decode_cmd" \
      $data $lang $dir
 fi
@@ -81,7 +87,7 @@ if [ $stage -le 2 ]; then
   echo "$0: Decoding with biased language models..."
   transform_opt=
   if [ -f $srcdir/trans.1 ]; then
-    # If srcdir containted trans.* then we assume they are fMLLR transforms for
+    # If srcdir contained trans.* then we assume they are fMLLR transforms for
     # this data, and we use them.
     transform_opt="--transform-dir $srcdir"
   fi
@@ -169,6 +175,13 @@ if [ $stage -le 9 ]; then
   # Caution: this script puts the CMVN stats in $data_out/data,
   # e.g. data/train_cleaned/data.  This is not the general pattern we use.
   steps/compute_cmvn_stats.sh $data_out $data_out/log $data_out/data
+fi
+
+if $cleanup; then
+  echo "$0: cleaning up intermediate files"
+  rm -r $dir/fsts $dir/HCLG.fsts.scp
+  rm -r $dir/lats/lat.*.gz $dir/lats/split_fsts
+  rm $dir/lattice_oracle/lat.*.gz
 fi
 
 echo "$0: done."

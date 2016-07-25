@@ -7,14 +7,10 @@ mic=ihm
 nj=10
 stage=0
 use_sat_alignments=true
-affix=
-min_seg_len=1.5
 
 . cmd.sh
 . ./path.sh
 . ./utils/parse_options.sh
-
-data_set=train${affix}
 
 speed_perturb_datadir() {
   mic=$1
@@ -42,30 +38,24 @@ speed_perturb_datadir() {
 if [ $stage -le 1 ]; then
   #Although the nnet will be trained by high resolution data, we still have to perturb the normal data to get the alignment
   # _sp stands for speed-perturbed
-    speed_perturb_datadir $mic ${data_set} true
+    speed_perturb_datadir $mic train true
 fi
+
 
 if [ $stage -le 2 ]; then
-  steps/cleanup/combine_short_segments.py \
-    --minimum-duration $min_seg_len \
-    --input-data-dir data/$mic/${data_set}_sp \
-    --output-data-dir data/$mic/${data_set}_sp_min${min_seg_len}
-fi
-
-if [ $stage -le 3 ]; then
   # we just need to recreate alignments in case we perturbed the data 
   # or in the case we are using ihm alignments, else the alignments would already
   # have been generated when we built the GMM-HMM systems
-  data_set=${data_set}_sp_min${min_seg_len}
+  data_set=train_sp
   if [ "$use_sat_alignments" == "true" ]; then
-    gmm_dir=exp/$mic/tri4a${affix}
+    gmm_dir=exp/$mic/tri4a
     align_script=steps/align_fmllr.sh
   else
-    gmm_dir=exp/$mic/tri3a${affix}
+    gmm_dir=exp/$mic/tri3a
     align_script=steps/align_si.sh
   fi
   $align_script --nj $nj --cmd "$train_cmd" \
-    data/$mic/${data_set} data/lang $gmm_dir ${gmm_dir}_${mic}_${data_set}_ali || exit 1;
+    data/$mic/train_sp data/lang $gmm_dir ${gmm_dir}_${mic}_${data_set}_ali || exit 1;
 fi
 
 exit 0;
