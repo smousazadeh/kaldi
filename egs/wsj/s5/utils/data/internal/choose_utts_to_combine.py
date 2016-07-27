@@ -9,6 +9,7 @@ import argparse
 from random import randint
 import sys
 import os
+from collections import defaultdict
 
 
 parser = argparse.ArgumentParser(description="""
@@ -359,7 +360,7 @@ try:
                 # picking the earlier spaker in case of a tied duration.
                 longest_spk_dur = -1.0
                 spk = None
-                for this_spk in sorted(keys(spk2dur)):
+                for this_spk in sorted(spk2dur.keys()):
                     if LessThan(longest_spk_dur, spk2dur[this_spk]):
                         longest_spk_dur = spk2dur[this_spk]
                         spk = this_spk

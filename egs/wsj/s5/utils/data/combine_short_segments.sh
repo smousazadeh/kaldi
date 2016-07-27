@@ -71,7 +71,7 @@ set -o pipefail
 # make sure $srcdir/utt2dur exists.
 utils/data/get_utt2dur.sh $srcdir
 
-utils/data/choose_utts_to_combine.py --min-duration=$min_seg_len \
+utils/data/internal/choose_utts_to_combine.py --min-duration=$min_seg_len \
   $srcdir/spk2utt $srcdir/utt2dur $dir/utt2utts $dir/utt2spk $dir/utt2dur
 
 utils/utt2spk_to_spk2utt.pl < $dir/utt2spk > $dir/spk2utt
