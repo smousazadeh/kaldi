@@ -278,7 +278,7 @@ class Segment:
         else:
             # We did split.  Add the very last segment.
             new_segment = Segment(self.split_lines_of_utt, cur_start_index,
-                                  index_to_split_at + 1, self.debug_str)
+                                  self.end_index, self.debug_str)
             assert cur_start_is_split
             new_segment.start_keep_proportion = 0.5
             segments.append(new_segment)
