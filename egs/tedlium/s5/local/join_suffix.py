@@ -1,23 +1,21 @@
 #!/usr/bin/env python
 #
-# Copyright  2014 Nickolay V. Shmyrev 
+# Copyright  2014  Nickolay V. Shmyrev
+#            2016  Johns Hopkins University (author: Daniel Povey)
 # Apache 2.0
 
 
 import sys
 from codecs import open
 
-words = set()
-for line in open(sys.argv[1], encoding='utf8'):
-    items = line.split()
-    words.add(items[0])
+# This script
 
 for line in sys.stdin:
     items = line.split()
     new_items = []
     i = 1
     while i < len(items):
-        if i < len(items) - 1 and items[i+1][0] == '\'' and items[i] + items[i+1] in words:
+        if i < len(items) - 1 and items[i+1][0] == '\'':
             new_items.append(items[i] + items[i+1])
             i = i + 1
         else:

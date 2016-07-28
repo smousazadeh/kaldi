@@ -1,7 +1,8 @@
 #!/bin/bash
 #
-# Copyright  2014 Nickolay V. Shmyrev
-#            2014 Brno University of Technology (Author: Karel Vesely)
+# Copyright  2014  Nickolay V. Shmyrev
+#            2014  Brno University of Technology (Author: Karel Vesely)
+#            2016  Johns Hopkins University (Author: Daniel Povey)
 # Apache 2.0
 
 # To be run from one directory above this script.
@@ -38,7 +39,7 @@ for set in dev test train; do
           -e 's:<sil>::g' \
           -e 's:([^ ]*)$::' | \
       awk '{ $2 = "A"; print $0; }'
-  } | local/join_suffix.py db/TEDLIUM_release1/TEDLIUM.150K.dic > data/$set/stm
+  } | local/join_suffix.py > data/$set/stm
 
   # Prepare 'text' file
   # - {NOISE} -> [NOISE] : map the tags to match symbols in dictionary
