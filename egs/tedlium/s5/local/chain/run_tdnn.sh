@@ -2,7 +2,7 @@
 #
 # This script requires that you have run the toplevel run.sh script in TEDLIUM up to stage 7.
 # This script is designed to run using the 'cleaned-up' data.
-# Run this script with the options --cleanup-affix <cleanup_affix> --min-seg-len <min_seg_len>,
+# Run this script with options like --cleanup-affix _cleaned --min-seg-len 2.0
 # where <cleanup_affix> matches the cleanup-affix passed to local/run_cleanup_segmentation.sh
 # <min_seg_len> is required to combine segments so as to not lose any data when doing chain training or sequence training
 # To run without any cleanup, pass the options --cleanup-affix "" --min-seg-len ""
@@ -70,7 +70,7 @@ common_egs_dir=
 xent_regularize=0.1
 
 min_seg_len=1.55
-cleanup_affix=cleaned
+cleanup_affix=_cleaned2
 
 extractor=
 
@@ -81,7 +81,7 @@ echo "$0 $@"  # Print the command line for logging
 . ./path.sh
 . ./utils/parse_options.sh
 
-dir=exp/chain${cleanup_affix:+_$cleanup_affix}/tdnn
+dir=exp/chain$cleanup_affix/tdnn
 dir=${dir}${affix}
 
 if ! cuda-compiled; then
@@ -100,7 +100,7 @@ train_set=train_${cleanup_affix}_sp_min${min_seg_len}
 gmm_dir=exp/tri3_${cleanup_affix}
 ali_dir=${gmm_dir}_ali_${train_set}
 lats_dir=${gmm_dir}_lats_${train_set}
-treedir=exp/chain${cleanup_affix:+_$cleanup_affix}/tri3_tree
+treedir=exp/chain${cleanup_affix}/tri3_tree
 lang=data/lang_chain
 
 mkdir -p $dir
@@ -108,7 +108,7 @@ mkdir -p $dir
 local/nnet3/run_ivector_common.sh --stage $stage \
   --generate-alignments true \
   --min-seg-len $min_seg_len \
-  --affix ${cleanup_affix:+_$cleanup_affix} \
+  --affix ${cleanup_affix} \
   --extractor "$extractor"
 
 if [ $stage -le 11 ]; then
@@ -141,7 +141,7 @@ if [ $stage -le 13 ]; then
 fi
 
 if [ -z "$extractor" ]; then
-  ivector_base_dir=exp/nnet3${cleanup_affix:+_$cleanup_affix}
+  ivector_base_dir=exp/nnet3${cleanup_affix}
 else
   ivector_base_dir=`dirname $extractor`
 fi

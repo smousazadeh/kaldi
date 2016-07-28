@@ -23,11 +23,15 @@ set -u
 stage=0
 cleanup_stage=0
 data=data/train
-cleanup_affix=cleaned2
+# note cleaned2 was with 1.0 min segment length,
+# cleaned3 was with 0.5 min segment length,
+# cleaned4 is with 0.5 generally but 1.0 for new segments. XXX due to bug it was 1.0 for *old* segments and 0.5 for new segments.
+# cleaned5 is as cleaned4 but fix to that bug; is't now  0.5 generally but 1.0 for new segments.
+cleanup_affix=cleaned5
 cleaned_data=${data}_${cleanup_affix}
 lang=data/lang
 srcdir=exp/tri3
-dir=exp/tri3_${cleanup_affix}
+dir=exp/tri3_${cleanup_affix}_work
 
 nj=100
 decode_nj=8
@@ -35,7 +39,6 @@ decode_nj=8
 . ./path.sh
 . ./cmd.sh
 . utils/parse_options.sh
-
 
 if [ $stage -le 1 ]; then
   # This does the actual data cleanup.
@@ -55,13 +58,13 @@ fi
 
 if [ $stage -le 4 ]; then
   # Test with the models trained on cleaned-up data.
-  utils/mkgraph.sh data/lang_test exp/tri4_cleaned exp/tri4_${cleanup_affix}/graph
+  utils/mkgraph.sh data/lang_test exp/tri4_${cleanup_affix} exp/tri4_${cleanup_affix}/graph
 
   steps/decode_fmllr.sh --nj $decode_nj --cmd "$decode_cmd" \
-    --num-threads 4 \
+    --num-threads 8 \
     exp/tri4_${cleanup_affix}/graph data/dev exp/tri4_${cleanup_affix}/decode_dev
   steps/decode_fmllr.sh --nj $decode_nj --cmd "$decode_cmd" \
-    --num-threads 4 \
+    --num-threads 8 \
     exp/tri4_${cleanup_affix}/graph data/test exp/tri4_${cleanup_affix}/decode_test
 fi
 

@@ -10,7 +10,8 @@ set -u -e -o pipefail
 stage=1
 generate_alignments=true # false if doing ctc training
 min_seg_len=1.55
-affix=
+affix=  # affix could be, for instance, "_cleaned", if you are using the cleanup
+        # from ../run_cleanup_segmentation.sh
 extractor=
 
 . ./cmd.sh
@@ -34,7 +35,7 @@ if [ $stage -le 1 ]; then
     data/${train_set}_tmp exp/make_mfcc/${train_set}_tmp $mfccdir || exit 1;
   steps/compute_cmvn_stats.sh data/${train_set}_tmp exp/make_mfcc/${train_set}_tmp $mfccdir || exit1;
   utils/fix_data_dir.sh data/${train_set}_tmp
-  
+
   utils/copy_data_dir.sh --spk-prefix sp1.0- --utt-prefix sp1.0- data/${train_set} data/temp0
   utils/combine_data.sh data/${train_set}_sp data/${train_set}_tmp data/temp0
   utils/fix_data_dir.sh data/${train_set}_sp
