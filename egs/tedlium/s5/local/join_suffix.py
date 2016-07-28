@@ -8,7 +8,9 @@
 import sys
 from codecs import open
 
-# This script
+# This script joins together pairs of split-up words like "you 're" -> "you're".
+# The TEDLIUM transcripts are normalized in a way that's not traditional for
+# speech recognition.
 
 for line in sys.stdin:
     items = line.split()
