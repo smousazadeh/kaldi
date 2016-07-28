@@ -59,7 +59,7 @@ train_ivector_dir=exp/$mic/nnet3${cleanup_affix}/ivectors_${train_set}_sp_hires_
 final_lm=`cat data/local/lm/final_lm`
 LM=$final_lm.pr1-7
 treedir=exp/$mic/chain${cleanup_affix}/tree${tree_affix}
-lat_dir=exp/$mic/chain${cleanup_affix}/${gmm_dir}_${train_set}_sp_comb_lats
+lat_dir=exp/$mic/chain${cleanup_affix}/${gmm}_${train_set}_sp_comb_lats
 dir=exp/$mic/chain${cleanup_affix}/tdnn${tdnn_affix}_sp
 
 if [ $stage -le 11 ]; then
