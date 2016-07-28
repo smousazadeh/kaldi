@@ -97,7 +97,6 @@ fi
 # run those things.
 
 train_set=train_${cleanup_affix}_sp_min${min_seg_len}
-
 gmm_dir=exp/tri3_${cleanup_affix}
 ali_dir=${gmm_dir}_ali_${train_set}
 lats_dir=${gmm_dir}_lats_${train_set}
