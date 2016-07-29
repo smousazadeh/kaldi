@@ -10,7 +10,7 @@ set -e -o pipefail
 
 
 # e.g.:
-# local/nnet3_cleanup/run_ivector_common.sh --mic ihm --affix _cleaned2 --gmm tri5a_cleaned2 --train-set train_cleaned2
+# local/nnet3_cleanup/run_ivector_common.sh --mic ihm --cleanup-affix _cleaned2 --gmm tri5a_cleaned2 --train-set train_cleaned2
 
 
 stage=0
@@ -22,8 +22,8 @@ train_set=train  # you might set this to e.g. train_cleaned.
 gmm=tri3_cleaned  #
 
 num_threads_ubm=32
-cleanup_affix=   # affix for exp/$mic/nnet3 directory to put iVector stuff in, so it
-                 # becomes exp/$mic/nnet3_cleaned or whatever.
+cleanup_affix=_cleaned   # affix for exp/$mic/nnet3 directory to put iVector stuff in, so it
+                        # becomes exp/$mic/nnet3_cleaned or whatever.
 
 . cmd.sh
 . ./path.sh

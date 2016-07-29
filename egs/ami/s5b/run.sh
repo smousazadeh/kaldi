@@ -75,6 +75,9 @@ if [ $stage -le 3 ]; then
     # this splits up the speakers (which for sdm and mdm just correspond
     # to recordings) into 30-second chunks.  It's like a very brain-dead form
     # of diarization; we can later replace it with 'real' diarization.
+    seconds_per_spk_max=30
+    [ "$mic" == "ihm" ] && seconds_per_spk_max=120  # speaker info for ihm is real,
+                                                    # so organize into much bigger chunks.
     utils/data/modify_speaker_info.sh --seconds-per-spk-max 30 \
       data/$mic/${dset}_orig data/$mic/$dset
   done
@@ -113,7 +116,7 @@ if [ $stage -le 7 ]; then
   steps/train_lda_mllt.sh --cmd "$train_cmd" \
     --splice-opts "--left-context=3 --right-context=3" \
     5000 80000 data/$mic/train data/lang exp/$mic/tri1_ali exp/$mic/tri2
-  steps/align_si.sh --nj $nj --cmd "$train_cmd" \
+  steps/align_fmllr.sh --nj $nj --cmd "$train_cmd" \
     data/$mic/train data/lang exp/$mic/tri2 exp/$mic/tri2_ali
   # Decode
    graph_dir=exp/$mic/tri2/graph_${LM}
@@ -144,7 +147,6 @@ if [ $stage -le 9 ]; then
   steps/decode_fmllr.sh --nj $nj --cmd "$decode_cmd" --config conf/decode.conf \
     $graph_dir data/$mic/eval exp/$mic/tri3/decode_eval_${LM}
 fi
-
 
 if [ $stage -le 10 ]; then
   # The following script cleans the data and produces cleaned data

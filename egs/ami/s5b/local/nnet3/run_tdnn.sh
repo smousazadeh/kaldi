@@ -86,19 +86,22 @@ fi
 if [ $stage -le 12 ]; then
   # this version of the decoding treats each utterance separately
   # without carrying forward speaker information.
+  rm $dir/.error || true 2>/dev/null
   for decode_set in dev eval; do
       (
-      num_jobs=`cat data/$mic/${decode_set}_hires/utt2spk|cut -d' ' -f2|sort -u|wc -l`
       decode_dir=${dir}/decode_${decode_set}
 
-      steps/nnet3/decode.sh --nj $num_jobs --cmd "$decode_cmd" \
+      steps/nnet3/decode.sh --nj $nj --cmd "$decode_cmd" \
           --online-ivector-dir exp/$mic/nnet3${cleanup_affix}/ivectors_${decode_set}_hires \
          $graph_dir data/$mic/${decode_set}_hires $decode_dir
       ) &
   done
+  wait;
+  if [ -f $dir/.error ]; then
+    echo "$0: error detected during decoding"
+    exit 1
+  fi
 fi
 
-wait;
 
 exit 0;
-
