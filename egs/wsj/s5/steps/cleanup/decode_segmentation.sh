@@ -30,10 +30,11 @@ echo "$0 $@"  # Print the command line for logging
 . parse_options.sh || exit 1;
 
 if [ $# != 3 ]; then
-   echo " This is a special decoding script for segmentation where we use one"
-   echo "decoding graph for each segment. We assume a file HCLG.fsts.scp exists"
+   echo "$0: This is a special decoding script for segmentation where we"
+   echo "use one decoding graph per segment. We assume a file HCLG.fsts.scp exists"
    echo "which is the scp file of the graphs for each segment."
-   echo " Note: this script does not estimate fMLLR transforms; you have to use"
+   echo "This will normally be obtained by steps/cleanup/make_biased_lm_graphs.sh."
+   echo "This script does not estimate fMLLR transforms; you have to use"
    echo "the --transform-dir option if you want to use fMLLR."
    echo ""
    echo "Usage: $0 [options] <graph-dir> <data-dir> <decode-dir>"

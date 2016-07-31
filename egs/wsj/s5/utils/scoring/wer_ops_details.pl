@@ -116,7 +116,8 @@ foreach my $refw ( sort (keys %EDIT_OPS) ) {
 }
 
 if ($word_len > $max_size) {
-  print STDERR "wer_ops_details.pl [info; affects only whitespace]: we are limiting the width to $max_size, max word len was $word_len\n";
+  ## We used to warn about this, but it was just confusing-- dan.
+  ## print STDERR "wer_ops_details.pl [info; affects only whitespace]: we are limiting the width to $max_size, max word len was $word_len\n";
   $word_len = $max_size
 };
 
