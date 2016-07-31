@@ -1,13 +1,18 @@
 #!/bin/bash
 
-# Copyright 2014, University of Edinburgh (Author: Pawel Swietojanski)
-# AMI Corpus dev/eval data preparation
+# Copyright 2014  University of Edinburgh (Author: Pawel Swietojanski)
+#           2016  Johns Hopkins University (Author: Daniel Povey)
+# AMI Corpus training data preparation
+# Apache 2.0
 
-. path.sh
+# Note: this is called by ../run.sh.
+
+. ./path.sh
 
 #check existing directories
 if [ $# != 3 ]; then
-  echo "Usage: ami_mdm_scoring_data_prep.sh /path/to/AMI-MDM mic-name set-name"
+  echo "Usage: $0 /path/to/AMI-MDM mic-name set-name"
+  echo "e.g: $0 /foo/bar/AMI mdm8 dev"
   exit 1;
 fi
 
@@ -17,7 +22,7 @@ SET=$3
 
 SEGS=data/local/annotations/$SET.txt
 tmpdir=data/local/$mic/$SET
-dir=data/$mic/$SET
+dir=data/$mic/${SET}_orig
 
 mkdir -p $tmpdir
 

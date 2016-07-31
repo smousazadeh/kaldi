@@ -10,9 +10,9 @@ set -e
 
 stage=0
 train_stage=-10
-has_fisher=true
 mic=ihm
 use_sat_alignments=true
+use_ihm_ali=false
 affix=
 speed_perturb=true
 common_egs_dir=
@@ -74,7 +74,7 @@ if [ $stage -le 10 ]; then
     --splice-indexes "$splice_indexes" \
     --subset-dim "$subset_dim" \
     --feat-type raw \
-    --online-ivector-dir exp/$mic/nnet3/ivectors_${train_set}_hires \
+    --online-ivector-dir exp/$mic/nnet3/ivectors_train_sp_hires \
     --cmvn-opts "--norm-means=false --norm-vars=false" \
     --egs-dir "$common_egs_dir" \
     --initial-effective-lrate 0.0015 --final-effective-lrate 0.00015 \
@@ -85,8 +85,8 @@ if [ $stage -le 10 ]; then
 fi
 
 if [ $stage -le 11 ]; then
-  # this version of the decoding treats each utterance separately
-  # without carrying forward speaker information.
+  rm $dir/.error 2>/dev/null || true
+
   for decode_set in dev eval; do
       (
       num_jobs=`cat data/$mic/${decode_set}_hires/utt2spk|cut -d' ' -f2|sort -u|wc -l`
@@ -95,8 +95,13 @@ if [ $stage -le 11 ]; then
       steps/nnet3/decode.sh --nj $num_jobs --cmd "$decode_cmd" \
           --online-ivector-dir exp/$mic/nnet3/ivectors_${decode_set} \
          $graph_dir data/$mic/${decode_set}_hires $decode_dir || exit 1;
-      ) &
+      ) || touch $dir/.error &
   done
+  wait;
+  if [ -f $dir/.error ]; then
+    echo "$0: something went wrong in decoding."
+    exit 1
+  fi
 fi
-wait;
+
 exit 0;

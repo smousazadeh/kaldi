@@ -1,6 +1,9 @@
 #!/bin/bash
 
-# adapted from local/chain/run_tdnn_ami_5.sh. This script does data cleanup 
+
+# CAUTION: this script is deprecated, please see local/chain_cleanup/run_tdnn.sh
+
+# adapted from local/chain/run_tdnn_ami_5.sh. This script does data cleanup
 # instead of filtering based on WER.
 
 # these are results with a slighly different min_seg_len=2secs and an older steps/cleanup/combine_short_segments.sh script

@@ -23,8 +23,6 @@ export cuda_cmd="queue.pl --gpu 1 --mem 20G"
 # On Eddie use:
 #export train_cmd="queue.pl -P inf_hcrc_cstr_nst -l h_rt=08:00:00"
 #export decode_cmd="queue.pl -P inf_hcrc_cstr_nst  -l h_rt=05:00:00 -pe memory-2G 4"
-#export highmem_cmd="queue.pl -P inf_hcrc_cstr_nst -l h_rt=05:00:00 -pe memory-2G 4"
-#export scoring_cmd="queue.pl -P inf_hcrc_cstr_nst  -l h_rt=00:20:00"
 
 if [ "$(hostname -d)" == "fit.vutbr.cz" ]; then
   # BUT cluster:

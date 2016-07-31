@@ -156,11 +156,12 @@ if [ $stage -le 10 ]; then
   # Note: local/run_cleanup_segmentation.sh defaults to using 50 jobs,
   # you can reduce it using the --nj option if you want.
   local/run_cleanup_segmentation.sh --mic $mic
-
 fi
 
 if [ $stage -le 11 ]; then
-  local/chain/run_tdnn.sh --mic $mic
+  ali_opt=
+  [ "$mic" != "ihm" ] && ali_opt="--use-ihm-ali true"
+  local/chain/run_tdnn.sh $ali_opt --mic $mic
 fi
 
 

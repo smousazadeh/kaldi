@@ -30,13 +30,19 @@ stage=0
 # -e 'error', -u 'undefined variable', -o pipefail 'error in pipeline',
 set -euxo pipefail
 
-# Download AMI corpus (distant channels), You need around 130GB of free space to get whole data ihm+mdm,
-# Avoiding re-download, using 'wget --continue ...',
+
+# Download AMI corpus, You need around 130GB of free space to get whole data ihm+mdm,
 if [ $stage -le 0 ]; then
-  [ -e data/local/downloads/wget_mdm.sh ] && \
-    echo "data/local/downloads/wget_mdm.sh already exists, better quit than re-download... (use --stage N)" && \
+  if [ -d $AMI_DIR ] && ! touch $AMI_DIR/.foo 2>/dev/null; then
+    echo "$0: directory $AMI_DIR seems to exist and not be owned by you."
+    echo " ... Assuming the data does not need to be downloaded.  Please use --stage 1 or more."
     exit 1
-  local/ami_download.sh mdm $AMI_DIR
+  fi
+  if [ -e data/local/downloads/wget_$mic.sh ]; then
+    echo "data/local/downloads/wget_$mic.sh already exists, better quit than re-download... (use --stage N)"
+    exit 1
+  fi
+  local/ami_download.sh $mic $AMI_DIR
 fi
 
 # Beamform-it!
@@ -98,7 +104,7 @@ if [ $stage -le 6 ]; then
     data/$mic/train data/lang exp/$mic/tri2a exp/$mic/tri2_ali
   # Decode,
   graph_dir=exp/$mic/tri2a/graph_${LM}
-  $highmem_cmd $graph_dir/mkgraph.log \
+  $decode_cmd --mem 4G $graph_dir/mkgraph.log \
     utils/mkgraph.sh data/lang_${LM} exp/$mic/tri2a $graph_dir
   steps/decode.sh --nj $nj_dev --cmd "$decode_cmd" --config conf/decode.conf \
     $graph_dir data/$mic/dev exp/$mic/tri2a/decode_dev_${LM}
@@ -115,7 +121,7 @@ if [ $stage -le 7 ]; then
     5000 80000 data/$mic/train data/lang exp/$mic/tri2_ali exp/$mic/tri3a
   # Decode,
   graph_dir=exp/$mic/tri3a/graph_${LM}
-  $highmem_cmd $graph_dir/mkgraph.log \
+  $decode_cmd --mem 4G $graph_dir/mkgraph.log \
     utils/mkgraph.sh data/lang_${LM} exp/$mic/tri3a $graph_dir
   steps/decode.sh --nj $nj_dev --cmd "$decode_cmd" --config conf/decode.conf \
     $graph_dir data/$mic/dev exp/$mic/tri3a/decode_dev_${LM}
@@ -167,7 +173,8 @@ if [ $stage -le 12 ]; then
   local/nnet/run_dnn_lda_mllt.sh $mic
 fi
 
-# nnet3 systems
+# nnet3 systems.
+# Note: in reality you wouldn't run all of these.
 if [ $stage -le 13 ]; then
   # Slightly better WERs can be obtained by using --use-sat-alignments true
   # however the SAT systems have to be built before that
@@ -191,9 +198,14 @@ if [ $stage -le 13 ]; then
     --train-stage -5 \
     --use-sat-alignments false
 
+  # discriminative training of TDNN system.
+  local/online/run_nnet2_ms_sp_disc.sh  \
+    --mic $mic  \
+    --gmm-dir exp/$mic/tri3a \
+    --srcdir exp/$mic/nnet2_online/nnet_ms_sp
+
   # TDNN model + chain training
   local/chain/run_tdnn_ami_5.sh  --mic sdm1 --affix msl1.5_45wer
-
 fi
 echo "Done."
 

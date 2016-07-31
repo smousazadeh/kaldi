@@ -26,13 +26,18 @@ esac
 final_lm=`cat data/local/lm/final_lm`
 LM=$final_lm.pr1-7
 
-# Download AMI corpus (distant channels), You need arount 130GB of free space to get whole data ihm+mdm,
-# Avoiding re-download, using 'wget --continue ...',
-if [ $stage -le 1 ]; then
-  [ -e data/local/downloads/wget_sdm.sh ] && \
-    echo "data/local/downloads/wget_sdm.sh already exists, better quit than re-download... (use --stage N)" && \
+# Download AMI corpus, You need around 130GB of free space to get whole data ihm+mdm,
+if [ $stage -le 0 ]; then
+  if [ -d $AMI_DIR ] && ! touch $AMI_DIR/.foo 2>/dev/null; then
+    echo "$0: directory $AMI_DIR seems to exist and not be owned by you."
+    echo " ... Assuming the data does not need to be downloaded.  Please use --stage 1 or more."
     exit 1
-  local/ami_download.sh --mics $micid sdm $AMI_DIR
+  fi
+  if [ -e data/local/downloads/wget_$mic.sh ]; then
+    echo "data/local/downloads/wget_$mic.sh already exists, better quit than re-download... (use --stage N)"
+    exit 1
+  fi
+  local/ami_download.sh --mics $micid $mic $AMI_DIR
 fi
 
 # Prepare mdm data directories,
@@ -87,7 +92,7 @@ if [ $stage -le 6 ]; then
     data/$mic/train data/lang exp/$mic/tri2a exp/$mic/tri2_ali
   # Decode,
   graph_dir=exp/$mic/tri2a/graph_${LM}
-  $highmem_cmd $graph_dir/mkgraph.log \
+  $decode_cmd --mem 4G $graph_dir/mkgraph.log \
     utils/mkgraph.sh data/lang_${LM} exp/$mic/tri2a $graph_dir
   steps/decode.sh --nj $nj_dev --cmd "$decode_cmd" --config conf/decode.conf \
     $graph_dir data/$mic/dev exp/$mic/tri2a/decode_dev_${LM}
@@ -104,13 +109,15 @@ if [ $stage -le 7 ]; then
     5000 80000 data/$mic/train data/lang exp/$mic/tri2_ali exp/$mic/tri3a
   # Decode,
   graph_dir=exp/$mic/tri3a/graph_${LM}
-  $highmem_cmd $graph_dir/mkgraph.log \
+  $decode_cmd --mem 4G $graph_dir/mkgraph.log \
     utils/mkgraph.sh data/lang_${LM} exp/$mic/tri3a $graph_dir
   steps/decode.sh --nj $nj_dev --cmd "$decode_cmd" --config conf/decode.conf \
     $graph_dir data/$mic/dev exp/$mic/tri3a/decode_dev_${LM}
   steps/decode.sh --nj $nj_eval --cmd "$decode_cmd" --config conf/decode.conf \
     $graph_dir data/$mic/eval exp/$mic/tri3a/decode_eval_${LM}
 fi
+
+# local/run_cleanup_segmentation.sh --mic sdm --gmm tri3a --cleaned_gmm tri4a_cleaned
 
 # skip SAT, and build MMI models
 nj_mmi=80
@@ -215,7 +222,7 @@ steps/train_sat.sh  --cmd "$train_cmd" \
 
 # Decode,
 graph_dir=exp/$mic/tri4a/graph_${LM}
-$highmem_cmd $graph_dir/mkgraph.log \
+$decode_cmd --mem 4G $graph_dir/mkgraph.log \
   utils/mkgraph.sh data/lang_${LM} exp/$mic/tri4a $graph_dir
 steps/decode_fmllr.sh --nj $nj_dev --cmd "$decode_cmd" --config conf/decode.conf \
   $graph_dir data/$mic/dev exp/$mic/tri4a/decode_dev_${LM}

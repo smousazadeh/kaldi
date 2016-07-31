@@ -1,29 +1,41 @@
 #!/bin/bash
 
-# Copyright 2014, University of Edinburgh (Author: Pawel Swietojanski)
-# AMI Corpus dev/eval data preparation 
 
-. path.sh
+# Copyright 2014  University of Edinburgh (Author: Pawel Swietojanski)
+#           2016  Johns Hopkins University (Author: Daniel Povey)
+# AMI Corpus training data preparation
+# Apache 2.0
+
+# Note: this is called by ../run.sh.
+
+. ./path.sh
 
 #check existing directories
 if [ $# != 2 ]; then
-  echo "Usage: ami_sdm_data_prep.sh <path/to/AMI> <dist-mic-num>"
-  exit 1; 
-fi 
+  echo "Usage: ami_sdm_data_prep.sh <path/to/AMI> <mic-id>"
+  echo "e.g.: $0 /foo/bar/ami sdm1"
+  exit 1;
+fi
 
 AMI_DIR=$1
-MICNUM=$2
+MICNUM=$(echo $2 | sed s/[a-z]//g)
 DSET="sdm$MICNUM"
+
+if [ "$DSET" != "$2" ]; then
+  echo "$0: bad 2nd argument: $*"
+  exit 1
+fi
 
 SEGS=data/local/annotations/train.txt
 dir=data/local/$DSET/train
+odir=data/$DSET/train_orig
 mkdir -p $dir
 
 # Audio data directory check
 if [ ! -d $AMI_DIR ]; then
   echo "Error: run.sh requires a directory argument"
-  exit 1; 
-fi  
+  exit 1;
+fi
 
 # And transcripts check
 if [ ! -f $SEGS ]; then
@@ -52,7 +64,7 @@ awk '{meeting=$1; channel="SDM"; speaker=$3; stime=$4; etime=$5;
 # (1c) Make segment files from transcript
 #segments file format is: utt-id side-id start-time end-time, e.g.:
 #AMI_ES2011a_H00_FEE041_0003415_0003484
-awk '{ 
+awk '{
        segment=$1;
        split(segment,S,"[_]");
        audioname=S[1]"_"S[2]"_"S[3]; startf=S[5]; endf=S[6];
@@ -78,23 +90,26 @@ awk '{print $1" sox -c 1 -t wavpcm -s "$2" -t wavpcm - |"}' $dir/wav2.scp > $dir
 
 # this file reco2file_and_channel maps recording-id
 cat $dir/wav.scp | \
-  perl -ane '$_ =~ m:^(\S+SDM)\s+.*\/([IETB].*)\.wav.*$: || die "bad label $_"; 
+  perl -ane '$_ =~ m:^(\S+SDM)\s+.*\/([IETB].*)\.wav.*$: || die "bad label $_";
        print "$1 $2 A\n"; ' > $dir/reco2file_and_channel || exit 1;
 
-# Assumtion, for sdm we adapt to the session only
+# In this data-prep phase we adapt to the session only [later on we may split
+# into shorter pieces].
+# We use the first two underscore-separated fields of the utterance-id
+# as the speaker-id, e.g. 'AMI_EN2001a_SDM_FEO065_0090130_0090775' becomes 'AMI_EN2001a'.
 awk '{print $1}' $dir/segments | \
-  perl -ane '$_ =~ m:^(\S+)([FM][A-Z]{0,2}[0-9]{3}[A-Z]*)(\S+)$: || die "bad label $_"; 
-          print "$1$2$3 $1\n";' | sort > $dir/utt2spk || exit 1;
+  perl -ane 'chop; @A = split("_", $_); $spkid = join("_", @A[0,1]); print "$_ $spkid\n";'  \
+  >$dir/utt2spk || exit 1;
 
-sort -k 2 $dir/utt2spk | utils/utt2spk_to_spk2utt.pl > $dir/spk2utt || exit 1;
+utils/utt2spk_to_spk2utt.pl <$dir/utt2spk >$dir/spk2utt || exit 1;
 
 # Copy stuff into its final locations
-mkdir -p data/$DSET/train
+mkdir -p $odir
 for f in spk2utt utt2spk wav.scp text segments reco2file_and_channel; do
-  cp $dir/$f data/$DSET/train/$f || exit 1;
+  cp $dir/$f $odir/$f || exit 1;
 done
 
-utils/validate_data_dir.sh --no-feats data/$DSET/train
+utils/validate_data_dir.sh --no-feats $odir
 
 echo AMI $DSET data preparation succeeded.
 

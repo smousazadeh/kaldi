@@ -1,31 +1,35 @@
 #!/bin/bash
 
-# Copyright 2014, University of Edinburgh (Author: Pawel Swietojanski)
-# AMI Corpus dev/eval data preparation 
 
-# To be run from one directory above this script.
+# Copyright 2014  University of Edinburgh (Author: Pawel Swietojanski)
+#           2016  Johns Hopkins University (Author: Daniel Povey)
+# AMI Corpus training data preparation
+# Apache 2.0
 
-. path.sh
+# Note: this is called by ../run.sh.
+
+. ./path.sh
 
 #check existing directories
 if [ $# != 2 ]; then
-  echo "Usage: ami_data_prep.sh </path/to/AMI-MDM> <mic>"
-  exit 1; 
-fi 
+  echo "Usage: $0 </path/to/AMI-MDM> <mic-id>"
+  echo "e.g. $0 /foo/bar/AMI mdm8"
+  exit 1;
+fi
 
 AMI_DIR=$1
 mic=$2
 
 SEGS=data/local/annotations/train.txt
 dir=data/local/$mic/train
-odir=data/$mic/train
+odir=data/$mic/train_orig
 mkdir -p $dir
 
 # Audio data directory check
 if [ ! -d $AMI_DIR ]; then
   echo "Error: run.sh requires a directory argument"
-  exit 1; 
-fi  
+  exit 1;
+fi
 
 # And transcripts check
 if [ ! -f $SEGS ]; then
@@ -51,7 +55,7 @@ awk '{meeting=$1; channel="MDM"; speaker=$3; stime=$4; etime=$5;
 # (1c) Make segment files from transcript
 #segments file format is: utt-id side-id start-time end-time, e.g.:
 #AMI_ES2011a_H00_FEE041_0003415_0003484
-awk '{ 
+awk '{
        segment=$1;
        split(segment,S,"[_]");
        audioname=S[1]"_"S[2]"_"S[3]; startf=S[5]; endf=S[6];
@@ -79,16 +83,19 @@ awk '{print $1" sox -c 1 -t wavpcm -s "$2" -t wavpcm - |"}' $dir/wav2.scp > $dir
 
 #prep reco2file_and_channel
 cat $dir/wav.scp | \
-  perl -ane '$_ =~ m:^(\S+MDM).*\/([IETB].*)\.wav.*$: || die "bad label $_"; 
+  perl -ane '$_ =~ m:^(\S+MDM).*\/([IETB].*)\.wav.*$: || die "bad label $_";
        print "$1 $2 A\n"; ' > $dir/reco2file_and_channel || exit 1;
 
-# we assume we adapt to the session only
-awk '{print $1}' $dir/segments | \
-  perl -ane '$_ =~ m:^(\S+)([FM][A-Z]{0,2}[0-9]{3}[A-Z]*)(\S+)$: || die "bad label $_"; 
-          print "$1$2$3 $1\n";'  \
-    > $dir/utt2spk || exit 1;
 
-sort -k 2 $dir/utt2spk | utils/utt2spk_to_spk2utt.pl > $dir/spk2utt || exit 1;
+# In this data-prep phase we adapt to the session only [later on we may split
+# into shorter pieces].
+# We use the first two underscore-separated fields of the utterance-id
+# as the speaker-id, e.g. 'AMI_EN2001a_MDM_FEO065_0090130_0090775' becomes 'AMI_EN2001a'.
+awk '{print $1}' $dir/segments | \
+  perl -ane 'chop; @A = split("_", $_); $spkid = join("_", @A[0,1]); print "$_ $spkid\n";'  \
+  >$dir/utt2spk || exit 1;
+
+utils/utt2spk_to_spk2utt.pl <$dir/utt2spk >$dir/spk2utt || exit 1;
 
 # Copy stuff into its final locations
 mkdir -p $odir

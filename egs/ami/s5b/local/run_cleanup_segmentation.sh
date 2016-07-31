@@ -87,8 +87,6 @@ cleaned_data=data/$mic/train_${cleanup_affix}
 srcdir=exp/$mic/$gmm
 dir=exp/$mic/${gmm}_${cleanup_affix}_work
 
-
-
 if [ $stage -le 1 ]; then
   # This does the actual data cleanup.
   # Note: using the shorter min-length options "--min-segment-length 0.3 --min-new-segment-length 0.6" \
@@ -100,13 +98,29 @@ if [ $stage -le 1 ]; then
     $data $lang $srcdir $dir $cleaned_data
 fi
 
+if [ $stage -le 2 ] && [ $mic != "ihm" ]; then
+  # this stage creates a directory like data/sdm1/train_cleaned_ihmdata.
+  # This is in case the user will want to use IHM alignments for neural net
+  # training.
 
-if [ $stage -le 2 ]; then
+  # the following makes sure that e.g. data/sdm1/train_ihmdata exists.
+  local/prepare_parallel_train_data.sh $mic
+
+  padding=$(cat $dir/segment_end_padding)  # e.g. 0.02
+
+  # the following command mirrors one that's made inside the clean_and_segment_data.sh
+  # script; it does the same subsegmentation to the data-dir with IHM wave files.
+  utils/data/subsegment_data_dir.sh --segment-end-padding $padding \
+    data/$mic/train_ihmdata $dir/segments $dir/text data/$mic/train_${cleanup_affix}_ihmdata
+  # note, there will be no feats or CMVN in these directories.
+fi
+
+if [ $stage -le 3 ]; then
   steps/align_fmllr.sh --nj $nj --cmd "$train_cmd" \
     data/$mic/train_${cleanup_affix} data/lang exp/$mic/$gmm exp/$mic/${gmm}_ali_${cleanup_affix}
 fi
 
-if [ $stage -le 3 ]; then
+if [ $stage -le 4 ]; then
   steps/train_sat.sh --cmd "$train_cmd" --stage "$train_stage" \
     5000 80000 data/$mic/train_${cleanup_affix} data/lang exp/$mic/${gmm}_ali_${cleanup_affix} exp/$mic/${gmm}_${cleanup_affix}
 fi
@@ -116,7 +130,7 @@ final_lm=`cat data/local/lm/final_lm`
 LM=$final_lm.pr1-7
 
 
-if [ $stage -le 4 ]; then
+if [ $stage -le 5 ]; then
   graph_dir=exp/$mic/${gmm}_${cleanup_affix}/graph_$LM
   nj_dev=$(cat data/$mic/dev/spk2utt | wc -l)
   nj_eval=$(cat data/$mic/eval/spk2utt | wc -l)
@@ -128,3 +142,4 @@ if [ $stage -le 4 ]; then
   steps/decode_fmllr.sh --nj $nj --cmd "$decode_cmd" --config conf/decode.conf \
     $graph_dir data/$mic/eval exp/$mic/${gmm}_${cleanup_affix}/decode_eval_$LM
 fi
+

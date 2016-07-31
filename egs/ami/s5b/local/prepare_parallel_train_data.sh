@@ -30,15 +30,8 @@ for f in data/ihm/train/utt2spk data/$mic/train/utt2spk; do
   fi
 done
 
-if [ -f data/$mic/train_ihmdata/feats.scp ]; then
-  echo "$0: if [ -f data/$mic/train_ihmdata/feats.scp it looks like features have "
-  echo " ... already been extracted for the parallel data.  Refusing to overwrite."
-  exit 1
-fi
-
 set -e -o pipefail
 
-#copy the clean data directory and change the segment ids
 mkdir -p data/$mic/train_ihmdata
 
 # the utterance-ids and speaker ids will be from the SDM or MDM data

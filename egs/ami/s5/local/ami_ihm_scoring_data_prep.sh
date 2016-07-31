@@ -1,28 +1,34 @@
 #!/bin/bash
 
-# Copyright 2014, University of Edinburgh (Author: Pawel Swietojanski)
-# AMI Corpus dev/eval data preparation 
 
-. path.sh
+# Copyright 2014  University of Edinburgh (Author: Pawel Swietojanski)
+#           2016  Johns Hopkins University (Author: Daniel Povey)
+# AMI Corpus training data preparation
+# Apache 2.0
+
+# Note: this is called by ../run.sh.
+
+. ./path.sh
 
 #check existing directories
-if [ $# != 2 ]; then
-  echo "Usage: ami_*_scoring_data_prep_edin.sh /path/to/AMI  set-name"
-  exit 1; 
-fi 
+if [ $# != 3 ] || [ $2 != "ihm" ]; then
+  echo "Usage: $0 /path/to/AMI ihm (dev|eval)"
+  exit 1;
+fi
 
 AMI_DIR=$1
-SET=$2
+SET=$3
 SEGS=data/local/annotations/$SET.txt
 
 dir=data/local/ihm/$SET
+odir=data/ihm/${SET}_orig
 mkdir -p $dir
 
 # Audio data directory check
 if [ ! -d $AMI_DIR ]; then
   echo "Error: run.sh requires a directory argument"
-  exit 1; 
-fi  
+  exit 1;
+fi
 
 # And transcripts check
 if [ ! -f $SEGS ]; then
@@ -52,7 +58,7 @@ awk '{meeting=$1; channel=$2; speaker=$3; stime=$4; etime=$5;
 # (1c) Make segment files from transcript
 #segments file format is: utt-id side-id start-time end-time, e.g.:
 
-awk '{ 
+awk '{
        segment=$1;
        split(segment,S,"[_]");
        audioname=S[1]"_"S[2]"_"S[3]; startf=S[5]; endf=S[6];
@@ -72,16 +78,16 @@ awk '{print $1" sox -c 1 -t wavpcm -s "$2" -t wavpcm - |"}' $dir/wav2.scp > $dir
 
 # (1d) reco2file_and_channel
 cat $dir/wav.scp \
- | perl -ane '$_ =~ m:^(\S+)(H0[0-4])\s+.*\/([IETB].*)\.wav.*$: || die "bad label $_"; 
+ | perl -ane '$_ =~ m:^(\S+)(H0[0-4])\s+.*\/([IETB].*)\.wav.*$: || die "bad label $_";
               print "$1$2 $3 A\n"; ' > $dir/reco2file_and_channel || exit 1;
 
 awk '{print $1}' $dir/segments | \
-  perl -ane '$_ =~ m:^(\S+)([FM][A-Z]{0,2}[0-9]{3}[A-Z]*)(\S+)$: || die "segments: bad label $_"; 
+  perl -ane '$_ =~ m:^(\S+)([FM][A-Z]{0,2}[0-9]{3}[A-Z]*)(\S+)$: || die "segments: bad label $_";
           print "$1$2$3 $1$2\n";' > $dir/utt2spk || exit 1;
 
 sort -k 2 $dir/utt2spk | utils/utt2spk_to_spk2utt.pl > $dir/spk2utt || exit 1;
 
-#check and correct the case when segment timings for given speaker overlap themself 
+#check and correct the case when segment timings for given speaker overlap themself
 #(important for simulatenous asclite scoring to proceed).
 #There is actually only one such case for devset and automatic segmentetions
 join $dir/utt2spk $dir/segments | \
@@ -89,7 +95,7 @@ join $dir/utt2spk $dir/segments | \
            if ($pu eq $_[1] && $pt > $_[3]) {
              print "$_[0] $_[2] $_[3] $_[4]>$_[0] $_[2] $pt $_[4]\n"
            }
-           $pu=$_[1]; $pt=$_[4]; 
+           $pu=$_[1]; $pt=$_[4];
          }' > $dir/segments_to_fix
 if [ `cat $dir/segments_to_fix | wc -l` -gt 0 ]; then
   echo "$0. Applying following fixes to segments"
@@ -102,17 +108,16 @@ if [ `cat $dir/segments_to_fix | wc -l` -gt 0 ]; then
 fi
 
 # Copy stuff into its final locations
-fdir=data/ihm/$SET
-mkdir -p $fdir
+mkdir -p $odir
 for f in spk2utt utt2spk wav.scp text segments reco2file_and_channel; do
-  cp $dir/$f $fdir/$f || exit 1;
+  cp $dir/$f $odir/$f || exit 1;
 done
 
 #Produce STMs for sclite scoring
-local/convert2stm.pl $dir > $fdir/stm
-cp local/english.glm $fdir/glm
+local/convert2stm.pl $dir > $odir/stm
+cp local/english.glm $odir/glm
 
-utils/validate_data_dir.sh --no-feats $fdir || exit 1;
+utils/validate_data_dir.sh --no-feats $odir || exit 1;
 
 echo AMI $SET set data preparation succeeded.
 

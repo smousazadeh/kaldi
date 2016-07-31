@@ -1,24 +1,34 @@
 #!/bin/bash
 
 # Copyright 2014, University of Edinburgh (Author: Pawel Swietojanski)
+#           2016  Johns Hopkins University (Author: Daniel Povey)
 # AMI Corpus dev/eval data preparation
+# Apache 2.0
 
-. path.sh
+# Note: this is called by ../run.sh.
+
+. ./path.sh
 
 #check existing directories
 if [ $# != 3 ]; then
-  echo "Usage: ami_sdm_scoring_data_prep.sh <path/to/AMI> <mic-id> <set-name>"
+  echo "Usage: $0  <path/to/AMI> <mic-id> <set-name>"
+  echo "e.g. $0 /foo/bar/AMI sdm1 dev"
   exit 1;
 fi
 
 AMI_DIR=$1
-MICNUM=$2
+MICNUM=$(echo $2 | sed s/[a-z]//g)
 SET=$3
 DSET="sdm$MICNUM"
 
+if [ "$DSET" != "$2" ]; then
+  echo "$0: bad 2nd argument: $*"
+  exit 1
+fi
+
 SEGS=data/local/annotations/$SET.txt
 tmpdir=data/local/$DSET/$SET
-dir=data/$DSET/$SET
+dir=data/$DSET/${SET}_orig
 
 mkdir -p $tmpdir
 

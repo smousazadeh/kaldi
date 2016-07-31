@@ -1,15 +1,19 @@
 #!/bin/bash
 
-# Copyright 2014, University of Edinburgh (Author: Pawel Swietojanski, Jonathan Kilgour)
-# Copyright 2015, Brno University of Technology (Author: Karel Vesely)
+# Copyright  2014  University of Edinburgh (Author: Pawel Swietojanski, Jonathan Kilgour)
+#            2015  Brno University of Technology (Author: Karel Vesely)
+#            2016  Johns Hopkins University (Author: Daniel Povey)
+#
 
 
-mics=
 . utils/parse_options.sh
 
 if [ $# -ne 2 ]; then
   echo "Usage: $0 <mic> <ami-dir>"
-  echo " where <mic> is either ihm, sdm or mdm and <ami-dir> is download space."
+  echo " where <mic> is either ihm, sdm1 or mdm8, and <ami-dir> is download space."
+  echo "e.g.: $0 sdm1 /foo/bar/AMI"
+  echo "Note: this script won't actually re-download things if called twice,"
+  echo "because we use the --continue flag to 'wget'."
   exit 1;
 fi
 mic=$1
@@ -20,17 +24,16 @@ amiurl=http://groups.inf.ed.ac.uk/ami
 wdir=data/local/downloads
 
 case $mic in
-  ihm) echo "Ignoring mics '$mics'"
+  ihm)
   ;;
-  mdm) mics="1 2 3 4 5 6 7 8"
-    echo "mics set to '$mics'"
+  mdm8) mics="1 2 3 4 5 6 7 8"
   ;;
-  sdm) [ -z "$mics" -o ! -z "${mics#[1-8]}" ] && echo 'Select microphone by --mics "N", (N=1..8)' && exit 1
-    echo "Selected microphone '$mics'"
+  sdm1) mics="1"
   ;;
   *) echo "Wrong 'mic' option $mic" && exit 1
   ;;
 esac
+echo "mics set to '$mics'"
 
 mkdir -p $adir
 mkdir -p $wdir/log

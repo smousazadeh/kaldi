@@ -19,8 +19,8 @@ from collections import defaultdict
 parser = argparse.ArgumentParser(
     description = "This program produces segmentation and text information "
     "based on reading ctm-edits input format which is produced by "
-    "steps/cleanup/get_ctm_edits.py, steps/cleanup/modify_ctm_edits.py and "
-    "steps/cleanup/taint_ctm_edits.py.")
+    "steps/cleanup/internal/get_ctm_edits.py, steps/cleanup/internal/modify_ctm_edits.py and "
+    "steps/cleanup/internal/taint_ctm_edits.py.")
 
 parser.add_argument("--min-segment-length", type = float, default = 0.5,
                     help = "Minimum allowed segment length (in seconds) for any "
@@ -92,7 +92,7 @@ parser.add_argument("--word-stats-out", type = str,
 
 parser.add_argument("non_scored_words_in", metavar = "<non-scored-words-file>",
                     help="Filename of file containing a list of non-scored words, "
-                    "one per line. See steps/cleanup/get_nonscored_words.py.")
+                    "one per line. See steps/cleanup/internal/get_nonscored_words.py.")
 parser.add_argument("ctm_edits_in", metavar = "<ctm-edits-in>",
                     help = "Filename of input ctm-edits file. "
                     "Use /dev/stdin for standard input.")

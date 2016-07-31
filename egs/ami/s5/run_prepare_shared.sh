@@ -4,7 +4,7 @@
 . ./path.sh
 
 # Path to Fisher transcripts LM interpolation (if not defined only AMI transcript LM is built),
-case $(hostname -d) in 
+case $(hostname -d) in
   fit.vutbr.cz) FISHER_TRANS=/mnt/matylda2/data/FISHER/fe_03_p1_tran ;; # BUT,
   clsp.jhu.edu) FISHER_TRANS=/export/corpora4/ami/fisher_trans/part1 ;; # JHU,
   cstr.ed.ac.uk) FISHER_TRANS=`pwd`/eddie_data/lm/data/fisher/part1 ;; # Edinburgh,
@@ -12,7 +12,7 @@ esac
 # Or select manually,
 # FISHER_TRANS=...
 
-. utils/parse_options.sh 
+. utils/parse_options.sh
 
 if ! command -v prune-lm >/dev/null 2>&1 ; then
   echo "$0: Error: the IRSTLM is not available or compiled" >&2
@@ -30,7 +30,7 @@ if ! command -v ngram-count >/dev/null 2>&1 ; then
   exit 1
 fi
 
-# Set bash to 'debug' mode, it prints the commands (option '-x') and exits on : 
+# Set bash to 'debug' mode, it prints the commands (option '-x') and exits on :
 # -e 'error', -u 'undefined variable', -o pipefail 'error in pipeline',
 set -euxo pipefail
 

@@ -14,6 +14,7 @@ stage=0
 # -e 'error', -u 'undefined variable', -o pipefail 'error in pipeline',
 set -euxo pipefail
 
+
 # Path where AMI gets downloaded (or where locally available):
 AMI_DIR=$PWD/wav_db # Default,
 case $(hostname -d) in
@@ -130,6 +131,8 @@ if [ $stage -le 7 ]; then
   steps/decode_fmllr.sh --nj $nj --cmd "$decode_cmd" --config conf/decode.conf \
     $graph_dir data/$mic/eval exp/$mic/tri4a/decode_eval_${LM}
 fi
+
+# local/run_cleanup_segmentation.sh
 
 nj_mmi=80
 if [ $stage -le 8 ]; then

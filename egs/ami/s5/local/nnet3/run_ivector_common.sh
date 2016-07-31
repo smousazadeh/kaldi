@@ -6,7 +6,7 @@
 stage=0
 mic=ihm
 num_threads_ubm=32
-nj=10
+nj=30
 use_ihm_ali=false
 use_sat_alignments=true
 
@@ -42,6 +42,7 @@ if [ "$use_ihm_ali" == "true" ]; then
   # prepare the parallel data directory ${mic}_clean_ali
   # generate alignments from the perturbed parallel data
   local/nnet3/prepare_parallel_perturbed_alignments.sh --stage $stage \
+                                                       --nj $nj \
                                                        --mic $mic \
                                                        --new-mic ${mic}_cleanali \
                                                        --use-sat-alignments $use_sat_alignments
@@ -51,10 +52,10 @@ if [ "$use_ihm_ali" == "true" ]; then
   ali_dir=exp/ihm/${gmm}_${mic}_train_parallel_sp_ali
 else
   # prepare the perturbed data directory and generate alignments
-  local/nnet3/prepare_perturbed_alignments.sh --stage $stage --mic $mic \
+  local/nnet3/prepare_perturbed_alignments.sh --stage $stage --mic $mic --nj $nj \
                                               --use-sat-alignments $use_sat_alignments
 
-  ali_dir=exp/$mic/${gmm}_${mic}_train_sp_ali
+  ali_dir=exp/$mic/${gmm}_train_sp_ali
 fi
 
 if [ $stage -le 4 ]; then

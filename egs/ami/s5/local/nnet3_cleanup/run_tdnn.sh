@@ -6,7 +6,7 @@
 
 # local/nnet3_cleanup/run_tdnn.sh --mic ihm --stage 11 --affix _cleaned2 --gmm tri4a_cleaned2 --train-set train_cleaned2 &
 
-# local/nnet3_cleanup/run_tdnn.sh --mic sdm1 --stage 11 --affix _cleaned2 --gmm tri4a_cleaned2 --train-set train_cleaned2 &
+# local/nnet3_cleanup/run_tdnn.sh --mic sdm1 --affix _cleaned2 --gmm tri4a_cleaned2 --train-set train_cleaned2 &
 
 
 

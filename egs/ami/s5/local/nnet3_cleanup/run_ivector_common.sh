@@ -10,9 +10,10 @@ set -e -o pipefail
 
 
 # e.g.:
-# local/nnet3_cleanup/run_ivector_common.sh --mic ihm --affix cleaned2 --gmm tri5a_cleaned2 --train-set train_cleaned2
+# local/nnet3_cleanup/run_ivector_common.sh --mic ihm --affix _cleaned2 --gmm tri5a_cleaned2 --train-set train_cleaned2
 
 
+stage=0
 mic=ihm
 nj=30
 min_seg_len=1.55
@@ -20,7 +21,6 @@ train_set=train # you might set this to e.g. train_cleaned.
 gmm=tri4a  # this might become e.g. tri5a_cleaned.
 
 num_threads_ubm=32
-stage=0
 affix=   # affix for exp/$mic/nnet3 directory to put iVector stuff in, so it
          # becomes exp/$mic/nnet3_cleaned or whatever.
 
@@ -115,6 +115,11 @@ if [ $stage -le 6 ]; then
   # on those segments.
   utils/data/combine_short_segments.sh \
      data/${mic}/${train_set}_sp_hires $min_seg_len data/${mic}/${train_set}_sp_hires_comb
+
+  # just copy over the CMVN to avoid having to recompute it.
+  cp data/${mic}/${train_set}_sp_hires/cmvn.scp data/${mic}/${train_set}_sp_hires_comb/
+  utils/fix_data_dir.sh data/${mic}/${train_set}_sp_hires_comb/
+
 fi
 
 
@@ -163,7 +168,10 @@ if [ $stage -le 9 ]; then
 fi
 
 if [ $stage -le 10 ]; then
-  ivectordir=exp/$mic/nnet3${affix}/ivectors_${train_set}_hires
+  # note, we don't encode the 'max2' in the ivectordir even though that's the data
+  # we extract the ivectors from, as it's still going to be valid for the non-'max2' data,
+  # the utterance list is the same.
+  ivectordir=exp/$mic/nnet3${affix}/ivectors_${train_set}_sp_hires_comb
   if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d $ivectordir/storage ]; then
     utils/create_split_dir.pl /export/b0{5,6,7,8}/$USER/kaldi-data/egs/ami-$mic-$(date +'%m_%d_%H_%M')/s5/$ivectordir/storage $ivectordir/storage
   fi
@@ -185,7 +193,8 @@ if [ $stage -le 10 ]; then
   # do the same for the test data, but in this case we don't need the speed
   # perturbation (sp) or small-segment concatenation (comb).
   for data in dev eval; do
-    steps/online/nnet2/extract_ivectors_online.sh --cmd "$train_cmd" --nj 30 \
+    nj=$(wc -l < data/${mic}/${data}_hires/spk2utt)
+    steps/online/nnet2/extract_ivectors_online.sh --cmd "$train_cmd" --nj "$nj" \
       data/${mic}/${data}_hires exp/$mic/nnet3${affix}/extractor \
       exp/$mic/nnet3${affix}/ivectors_${data}_hires
   done

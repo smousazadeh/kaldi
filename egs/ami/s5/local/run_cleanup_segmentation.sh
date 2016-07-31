@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Copyright 2016  Vimal Manohar
+#           2016  Johns Hopkins University (author: Daniel Povey)
 # Apache 2.0
 
 # This script demonstrates how to re-segment training data selecting only the
@@ -11,6 +12,28 @@
 
 # For nnet3 and chain results after cleanup, see the scripts in
 # local/nnet3/run_tdnn.sh and local/chain/run_tdnn.sh
+
+# notes: with no options it gives results for ihm [although note, current results are to be
+# seen in the 'cleaned2' directory].
+
+# I ran the first sdm1 run in:
+#  local/run_cleanup_segmentation.sh --mic sdm1 --gmm tri3a --stage 3 --train-stage 35 &
+# trying with SAT alignments and models with:
+#  local/run_cleanup_segmentation.sh --mic sdm1  --cleanup-affix cleaned2
+# and it gave about 0.4% improvement and retained 86% of the data,... but this is from an unadapted GMM;
+# trying also from an adapted GMM:
+# local/run_cleanup_segmentation.sh --mic sdm1 --gmm tri4a
+# Testing bad-utts before and after cleanup:
+#  Before:
+#  steps/cleanup/find_bad_utts.sh --cmd "$decode_cmd" --nj 40 data/sdm1/train data/lang exp/sdm1/tri4a exp/sdm1/tri4a_bad_utts
+# and running after the cleanup, with the new bad-utts script, which is the same as run_cleanup_segmentation.sh but without
+# doing the actual cleanup.
+# steps/cleanup/find_bad_utts_new2.sh --cmd "$decode_cmd" --nj 40 data/sdm1/train_cleaned2 data/lang exp/sdm1/tri4a_cleaned2 exp/sdm1/tri4a_cleaned2_bad_utts_new2
+#
+# steps/cleanup/find_bad_utts_new2.sh --acwt 0.125 --lattice-beam 8.0 --beam 20.0 --cmd "$decode_cmd --max-jobs-run 50" --nj 100 data/sdm1/train_cleaned2 data/lang exp/sdm1/tri4a_cleaned2 exp/sdm1/tri4a_cleaned2_bad_utts_new2_acwt0.125 &  [WER was about 2%, versus 1% above, lots more ins and sub]
+#
+#
+
 
 
 # GMM Results for speaker-independent (SI) and speaker adaptive training (SAT) systems on dev and test sets
@@ -47,52 +70,61 @@ set -u
 
 stage=0
 cleanup_stage=0
+train_stage=-10
 mic=ihm
-
 cleanup_affix=cleaned
 nj=50
-gmm=tri4a  # temp-- will make this tri4a.
-data=data/$mic/train
+gmm=tri4a
 lang=data/lang
-srcdir=exp/$mic/$gmm
-dir=exp/$mic/${gmm}_${cleanup_affix}
-cleaned_data=${data}_${cleanup_affix}
+
 
 . ./path.sh
 . ./cmd.sh
 . utils/parse_options.sh
 
+data=data/$mic/train
+cleaned_data=data/$mic/train_${cleanup_affix}
+srcdir=exp/$mic/$gmm
+dir=exp/$mic/${gmm}_${cleanup_affix}_work
+
+
 
 if [ $stage -le 1 ]; then
   # This does the actual data cleanup.
+  # Note: using the shorter min-length options "--min-segment-length 0.3 --min-new-segment-length 0.6" \
+  # [vs. default 0.5, 0.1] leads to more data being kept, I think about 92% vs 88%; and
+  # the WER changes were inconsistent but overall very slightly better, e.g. (0.2% better, 0.1% worse)
+  # on different test sets.
   steps/cleanup/clean_and_segment_data.sh --stage $cleanup_stage --nj $nj --cmd "$train_cmd" \
+      --segmentation-opts "--min-segment-length 0.3 --min-new-segment-length 0.6" \
     $data $lang $srcdir $dir $cleaned_data
 fi
 
 
 if [ $stage -le 2 ]; then
   steps/align_fmllr.sh --nj $nj --cmd "$train_cmd" \
-    data/$mic/train_${cleanup_affix} data/lang exp/$mic/tri3a exp/$mic/tri3a_ali_${cleanup_affix}
+    data/$mic/train_${cleanup_affix} data/lang exp/$mic/$gmm exp/$mic/${gmm}_ali_${cleanup_affix}
 fi
 
 if [ $stage -le 3 ]; then
-  steps/train_sat.sh --cmd "$train_cmd" \
-    5000 80000 data/$mic/train_${cleanup_affix} data/lang exp/$mic/tri3a_ali_${cleanup_affix} exp/$mic/tri4a_${cleanup_affix}
+  steps/train_sat.sh --cmd "$train_cmd" --stage "$train_stage" \
+    5000 80000 data/$mic/train_${cleanup_affix} data/lang exp/$mic/${gmm}_ali_${cleanup_affix} exp/$mic/${gmm}_${cleanup_affix}
 fi
 
 [ ! -r data/local/lm/final_lm ] && echo "Please, run 'run_prepare_shared.sh' first!" && exit 1
 final_lm=`cat data/local/lm/final_lm`
 LM=$final_lm.pr1-7
 
-nj_dev=$(cat data/$mic/dev/spk2utt | wc -l)
-nj_eval=$(cat data/$mic/eval/spk2utt | wc -l)
 
 if [ $stage -le 4 ]; then
-  graph_dir=exp/$mic/tri4a_${cleanup_affix}/graph_${LM}
+  graph_dir=exp/$mic/${gmm}_${cleanup_affix}/graph_$LM
+  nj_dev=$(cat data/$mic/dev/spk2utt | wc -l)
+  nj_eval=$(cat data/$mic/eval/spk2utt | wc -l)
+
   $decode_cmd $graph_dir/mkgraph.log \
-    utils/mkgraph.sh data/lang_${LM} exp/$mic/tri4a_${cleanup_affix} $graph_dir
+    utils/mkgraph.sh data/lang_$LM exp/$mic/${gmm}_${cleanup_affix} $graph_dir
   steps/decode_fmllr.sh --nj $nj_dev --cmd "$decode_cmd" --config conf/decode.conf \
-    $graph_dir data/$mic/dev exp/$mic/tri4a_${cleanup_affix}/decode_dev_${LM}
+    $graph_dir data/$mic/dev exp/$mic/${gmm}_${cleanup_affix}/decode_dev_$LM
   steps/decode_fmllr.sh --nj $nj_eval --cmd "$decode_cmd" --config conf/decode.conf \
-    $graph_dir data/$mic/eval exp/$mic/tri4a_${cleanup_affix}/decode_eval_${LM}
+    $graph_dir data/$mic/eval exp/$mic/${gmm}_${cleanup_affix}/decode_eval_$LM
 fi

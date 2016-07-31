@@ -4,13 +4,21 @@
 # is the version that's meant to run with data-cleanup, that doesn't
 # support parallel alignments.
 
+
+# local/nnet3/run_tdnn.sh --mic sdm1 --use-ihm-ali true
+
 # local/nnet3/run_tdnn.sh --mic ihm --stage 11 --affix _cleaned2 --gmm tri4a_cleaned2 --train-set train_cleaned2 &
 
 # local/nnet3/run_tdnn.sh --mic sdm1 --stage 11 --affix _cleaned2 --gmm tri4a_cleaned2 --train-set train_cleaned2 &
 
+# this is an example of how you'd train a non-IHM system with the IHM
+# alignments.  the --gmm option in this case refers to the IHM gmm that's used
+# to get the alignments.
+# local/nnet3/run_tdnn.sh --mic sdm1 --use-ihm-ali true --affix _cleaned2 --gmm tri4a --train-set train_cleaned2 &
 
 
-set -e -o pipefail
+
+set -e -o pipefail -u
 
 # First the options that are passed through to run_ivector_common.sh
 # (some of which are also used in this script directly).
@@ -18,10 +26,14 @@ stage=0
 mic=ihm
 nj=30
 min_seg_len=1.55
+use_ihm_ali=false
 train_set=train_cleaned
-gmm=tri3_cleaned
+gmm=tri3_cleaned  # this is the source gmm-dir for the data-type of interest; it
+                  # should have alignments for the specified training data.
+ihm_gmm=tri3      # Only relevant if $use_ihm_ali is true, the name of the gmm-dir in
+                  # the ihm directory that is to be used for getting alignments.
 num_threads_ubm=32
-cleanup_affix=_cleaned  # cleanup affix for exp dirs, e.g. _cleaned
+nnet3_affix=_cleaned  # cleanup affix for exp dirs, e.g. _cleaned
 tdnn_affix=  #affix for TDNN directory e.g. "a" or "b", in case we change the configuration.
 
 # Options which are not passed through to run_ivector_common.sh
@@ -50,21 +62,59 @@ local/nnet3/run_ivector_common.sh --stage $stage \
                                   --train-set $train_set \
                                   --gmm $gmm \
                                   --num-threads-ubm $num_threads_ubm \
-                                  --cleanup-affix $cleanup_affix
+                                  --nnet3-affix $nnet3_affix
+
+local/nnet3/prepare_lores_feats.sh --stage $stage \
+                                   --mic $mic \
+                                   --nj $nj \
+                                   --min-seg-len $min_seg_len \
+                                   --use-ihm-ali $use_ihm_ali \
+                                   --train-set $train_set
+
+if $use_ihm_ali; then
+  gmm_dir=exp/ihm/${ihm_gmm}
+  ali_dir=exp/${mic}/${ihm_gmm}_ali_sp_comb_ihmdata
+  lores_train_data_dir=data/$mic/${train_set}_ihmdata_sp_comb
+  maybe_ihm="IHM "
+  dir=exp/$mic/nnet3${nnet3_affix}/tdnn${tdnn_affix}_sp_ihmali
+else
+  gmm_dir=exp/${mic}/${gmm}
+  ali_dir=exp/${mic}/${gmm}_ali_sp_comb
+  lores_train_data_dir=data/$mic/${train_set}_sp_comb
+  maybe_ihm=
+  dir=exp/$mic/nnet3${nnet3_affix}/tdnn${tdnn_affix}_sp
+fi
 
 
-gmm_dir=exp/$mic/$gmm
-ali_dir=${gmm_dir}_ali_sp_comb
 train_data_dir=data/$mic/${train_set}_sp_hires_comb
-train_ivector_dir=exp/$mic/nnet3${cleanup_affix}/ivectors_${train_set}_sp_hires_comb
+train_ivector_dir=exp/$mic/nnet3${nnet3_affix}/ivectors_${train_set}_sp_hires_comb
 final_lm=`cat data/local/lm/final_lm`
 LM=$final_lm.pr1-7
 graph_dir=$gmm_dir/graph_${LM}
 
-dir=exp/$mic/nnet3${cleanup_affix}/tdnn${tdnn_affix}_sp
+
+
+for f in $train_data_dir/feats.scp $train_ivector_dir/ivectors_online.scp \
+     $graph_dir/HCLG.fst; do
+  [ ! -f $f ] && echo "$0: expected file $f to exist" && exit 1
+done
+
 
 
 if [ $stage -le 11 ]; then
+  if [ -f $ali_dir/ali.1.gz ]; then
+    echo "$0: alignments in $ali_dir appear to already exist.  Please either remove them "
+    echo " ... or use a later --stage option."
+    exit 1
+  fi
+  echo "$0: aligning perturbed, short-segment-combined ${maybe_ihm}data"
+  steps/align_fmllr.sh --nj $nj --cmd "$train_cmd" \
+         ${lores_train_data_dir} data/lang $gmm_dir $ali_dir
+fi
+
+[ ! -f $ali_dir/ali.1.gz ] && echo  "$0: expected $ali_dir/ali.1.gz to exist" && exit 1
+<
+if [ $stage -le 12 ]; then
   if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d $dir/egs/storage ]; then
     utils/create_split_dir.pl \
      /export/b0{3,4,5,6}/$USER/kaldi-data/egs/ami-$(date +'%m_%d_%H_%M')/s5/$dir/egs/storage $dir/egs/storage
@@ -92,7 +142,7 @@ if [ $stage -le 12 ]; then
       decode_dir=${dir}/decode_${decode_set}
 
       steps/nnet3/decode.sh --nj $nj --cmd "$decode_cmd" \
-          --online-ivector-dir exp/$mic/nnet3${cleanup_affix}/ivectors_${decode_set}_hires \
+          --online-ivector-dir exp/$mic/nnet3${nnet3_affix}/ivectors_${decode_set}_hires \
          $graph_dir data/$mic/${decode_set}_hires $decode_dir
       ) &
   done
