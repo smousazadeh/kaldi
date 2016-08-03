@@ -2,6 +2,11 @@
 
 # this script has common stages shared across AMI chain recipes
 
+# local/nnet3/run_tdnn.sh --stage 8 --use-ihm-ali true --mic sdm1
+# local/nnet3/run_tdnn.sh --stage 8 --use-ihm-ali false --mic sdm1
+
+# local/chain/run_tdnn.sh --use-ihm-ali true --mic sdm1 --train-set train --gmm tri3 --nnet3-affix ""
+
 #local/chain/run_tdnn.sh --mic sdm1 --use-ihm-ali true --train-set train_cleaned  --gmm tri3_cleaned&
 
 #local/chain/run_tdnn.sh --mic ihm --train-set train_cleaned2  --gmm tri4a_cleaned2  --stage 11 &
@@ -53,8 +58,9 @@ local/nnet3/run_ivector_common.sh --stage $stage \
                                   --train-set $train_set \
                                   --gmm $gmm \
                                   --num-threads-ubm $num_threads_ubm \
-                                  --nnet3-affix $nnet3_affix
+                                  --nnet3-affix "$nnet3_affix"
 
+# Note: the first stage of the following script is stage 8.
 local/nnet3/prepare_lores_feats.sh --stage $stage \
                                    --mic $mic \
                                    --nj $nj \
@@ -64,14 +70,16 @@ local/nnet3/prepare_lores_feats.sh --stage $stage \
 
 if $use_ihm_ali; then
   gmm_dir=exp/ihm/${ihm_gmm}
-  ali_dir=exp/${mic}/${ihm_gmm}_ali_sp_comb_ihmdata
+  ali_dir=exp/${mic}/${ihm_gmm}_ali_${train_set}_sp_comb_ihmdata
   lores_train_data_dir=data/$mic/${train_set}_ihmdata_sp_comb
   tree_dir=exp/$mic/chain${nnet3_affix}/tree${tree_affix}_ihmdata
   lat_dir=exp/$mic/chain${nnet3_affix}/${gmm}_${train_set}_sp_comb_lats_ihmdata
-  dir=exp/$mic/chain${nnet3_affix}/tdnn${tdnn_affix}_sp_ihmdata
+  dir=exp/$mic/chain${nnet3_affix}/tdnn${tdnn_affix}_sp_ihmali
+  # note: the distinction between when we use the 'ihmdata' suffix versus
+  # 'ihmali' is pretty arbitrary.
 else
   gmm_dir=exp/${mic}/$gmm
-  ali_dir=exp/${mic}/${gmm}_ali_sp_comb
+  ali_dir=exp/${mic}/${gmm}_ali_${train_set}_sp_comb
   lores_train_data_dir=data/$mic/${train_set}_sp_comb
   tree_dir=exp/$mic/chain${nnet3_affix}/tree${tree_affix}
   lat_dir=exp/$mic/chain${nnet3_affix}/${gmm}_${train_set}_sp_comb_lats

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# this is the standard "tdnn" system, built in nnet3; this script
+#    This is the standard "tdnn" system, built in nnet3; this script
 # is the version that's meant to run with data-cleanup, that doesn't
 # support parallel alignments.
 
@@ -10,6 +10,12 @@
 # local/nnet3/run_tdnn.sh --mic ihm --stage 11 --affix _cleaned2 --gmm tri4a_cleaned2 --train-set train_cleaned2 &
 
 # local/nnet3/run_tdnn.sh --mic sdm1 --stage 11 --affix _cleaned2 --gmm tri4a_cleaned2 --train-set train_cleaned2 &
+
+# local/nnet3/run_tdnn.sh --use-ihm-ali true --mic sdm1 --train-set train --gmm tri3 --nnet3-affix "" &
+
+# local/nnet3/run_tdnn.sh --use-ihm-ali true --mic mdm8 &
+
+#  local/nnet3/run_tdnn.sh --use-ihm-ali true --mic mdm8 --train-set train --gmm tri3 --nnet3-affix "" &
 
 # this is an example of how you'd train a non-IHM system with the IHM
 # alignments.  the --gmm option in this case refers to the IHM gmm that's used
@@ -62,8 +68,9 @@ local/nnet3/run_ivector_common.sh --stage $stage \
                                   --train-set $train_set \
                                   --gmm $gmm \
                                   --num-threads-ubm $num_threads_ubm \
-                                  --nnet3-affix $nnet3_affix
+                                  --nnet3-affix "$nnet3_affix"
 
+# Note: the first stage of the following script is stage 8.
 local/nnet3/prepare_lores_feats.sh --stage $stage \
                                    --mic $mic \
                                    --nj $nj \
@@ -73,13 +80,13 @@ local/nnet3/prepare_lores_feats.sh --stage $stage \
 
 if $use_ihm_ali; then
   gmm_dir=exp/ihm/${ihm_gmm}
-  ali_dir=exp/${mic}/${ihm_gmm}_ali_sp_comb_ihmdata
+  ali_dir=exp/${mic}/${ihm_gmm}_ali_${train_set}_sp_comb_ihmdata
   lores_train_data_dir=data/$mic/${train_set}_ihmdata_sp_comb
   maybe_ihm="IHM "
   dir=exp/$mic/nnet3${nnet3_affix}/tdnn${tdnn_affix}_sp_ihmali
 else
   gmm_dir=exp/${mic}/${gmm}
-  ali_dir=exp/${mic}/${gmm}_ali_sp_comb
+  ali_dir=exp/${mic}/${gmm}_ali_${train_set}_sp_comb
   lores_train_data_dir=data/$mic/${train_set}_sp_comb
   maybe_ihm=
   dir=exp/$mic/nnet3${nnet3_affix}/tdnn${tdnn_affix}_sp
@@ -94,7 +101,7 @@ graph_dir=$gmm_dir/graph_${LM}
 
 
 
-for f in $train_data_dir/feats.scp $train_ivector_dir/ivectors_online.scp \
+for f in $train_data_dir/feats.scp $train_ivector_dir/ivector_online.scp \
      $graph_dir/HCLG.fst; do
   [ ! -f $f ] && echo "$0: expected file $f to exist" && exit 1
 done
@@ -113,7 +120,7 @@ if [ $stage -le 11 ]; then
 fi
 
 [ ! -f $ali_dir/ali.1.gz ] && echo  "$0: expected $ali_dir/ali.1.gz to exist" && exit 1
-<
+
 if [ $stage -le 12 ]; then
   if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d $dir/egs/storage ]; then
     utils/create_split_dir.pl \
