@@ -3,32 +3,38 @@
 # Copyright  2014 Nickolay V. Shmyrev
 # Apache 2.0
 
-# TODO: change here the LMs from PocoLM incliding the acoustic training data
-
 if [ -f path.sh ]; then . path.sh; fi
 
-arpa_lm=db/cantab-TEDLIUM/cantab-TEDLIUM-pruned.lm3.gz
-[ ! -f $arpa_lm ] && echo No such file $arpa_lm && exit 1;
 
-rm -rf data/lang_nosp_test
-cp -r data/lang_nosp data/lang_nosp_test
+small_arpa_lm=data/local/local_lm/data/arpa/4gram_small.arpa.gz
+big_arpa_lm=data/local/local_lm/data/arpa/4gram_big.arpa.gz
 
-gunzip -c "$arpa_lm" | arpa2fst --disambig-symbol=#0 \
-  --read-symbol-table=data/lang_nosp_test/words.txt - data/lang_nosp_test/G.fst
+for f in $small_arpa_lm $big_arpa_lm data/lang_nosp/words.txt; do
+  [ ! -f $f ] && echo "$0: expected file $f to exist" && exit 1
+done
 
 
-echo  "$0: Checking how stochastic G is (the first of these numbers should be small):"
-fstisstochastic data/lang_nosp_test/G.fst
+set -e
 
-utils/validate_lang.pl data/lang_nosp_test || exit 1;
+if [ -f data/lang_nosp/G.fst ] && [ data/lang_nosp/G.fst -nt $small_arpa_lm ]; then
+  echo "$0: not regenerating data/lang_nosp/G.fst as it already exists and "
+  echo ".. is newer than the source LM."
 
-if [ ! -d data/lang_nosp_rescore ]; then
+  echo  "$0: Checking how stochastic G is (the first of these numbers should be small):"
+  fstisstochastic data/lang_nosp/G.fst
+  utils/validate_lang.pl data/lang_nosp || exit 1;
+else
+  arpa2fst --disambig-symbol=#0 --read-symbol-table=data/lang_nosp/words.txt \
+    "gunzip -c $small_arpa_lm|" data/lang_nosp/G.fst
+fi
 
-  big_arpa_lm=db/cantab-TEDLIUM/cantab-TEDLIUM-unpruned.lm4.gz
-  [ ! -f $big_arpa_lm ] && echo No such file $big_arpa_lm && exit 1;
 
-  utils/build_const_arpa_lm.sh $big_arpa_lm data/lang_nosp_test data/lang_nosp_rescore || exit 1;
 
+if [ -f data/lang_nosp_rescore/G.carpa ] && [ data/lang_nosp_rescore/G.carpa -nt $big_arpa_lm ] && \
+    [ data/lang_nosp_rescore/G.carpa -nt data/lang_nosp/words.txt ]; then
+  echo "$0: not regenerating data/lang_nosp_rescore/ as it seems to already by up to date."
+else
+  utils/build_const_arpa_lm.sh $big_arpa_lm data/lang_nosp data/lang_nosp_rescore || exit 1;
 fi
 
 exit 0;
