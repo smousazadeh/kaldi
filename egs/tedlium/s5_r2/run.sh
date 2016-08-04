@@ -80,7 +80,7 @@ fi
 # Well create a subset with 10k short segments to make flat-start training easier:
 if [ $stage -le 7 ]; then
   utils/subset_data_dir.sh --shortest data/train 10000 data/train_10kshort
-  local/remove_dup_utts.sh 10 data/train_10kshort data/train_10kshort_nodup
+  utils/data/remove_dup_utts.sh 10 data/train_10kshort data/train_10kshort_nodup
 fi
 
 # Train
@@ -105,7 +105,7 @@ if [ $stage -le 10 ]; then
     steps/decode.sh --nj $decode_nj --cmd "$decode_cmd"  --num-threads 4 \
       exp/tri1/graph_nosp data/${dset} exp/tri1/decode_nosp_${dset}
     steps/lmrescore_const_arpa.sh  --cmd "$decode_cmd" data/lang_nosp data/lang_nosp_rescore \
-       exp/tri1/decode_nosp_${dset} exp/tri1/decode_nosp_${dset}_rescore
+       data/${dset} exp/tri1/decode_nosp_${dset} exp/tri1/decode_nosp_${dset}_rescore
   done
 fi
 
@@ -123,7 +123,7 @@ if [ $stage -le 12 ]; then
     steps/decode.sh --nj $decode_nj --cmd "$decode_cmd"  --num-threads 4 \
       exp/tri2/graph_nosp data/${dset} exp/tri2/decode_nosp_${dset}
     steps/lmrescore_const_arpa.sh  --cmd "$decode_cmd" data/lang_nosp data/lang_nosp_rescore \
-       exp/tri2/decode_nosp_${dset} exp/tri2/decode_nosp_${dset}_rescore
+       data/${dset} exp/tri2/decode_nosp_${dset} exp/tri2/decode_nosp_${dset}_rescore
   done
 fi
 
@@ -147,7 +147,7 @@ if [ $stage -le 14 ]; then
     steps/decode.sh --nj $decode_nj --cmd "$decode_cmd"  --num-threads 4 \
       exp/tri2/graph data/${dset} exp/tri2/decode_${dset}
     steps/lmrescore_const_arpa.sh --cmd "$decode_cmd" data/lang data/lang_rescore \
-       exp/tri2/decode_${dset} exp/tri2/decode_${dset}_rescore
+       data/${dset} exp/tri2/decode_${dset} exp/tri2/decode_${dset}_rescore
   done
 fi
 
@@ -164,8 +164,12 @@ if [ $stage -le 15 ]; then
     steps/decode_fmllr.sh --nj $decode_nj --cmd "$decode_cmd"  --num-threads 4 \
       exp/tri3/graph data/${dset} exp/tri3/decode_${dset}
     steps/lmrescore_const_arpa.sh --cmd "$decode_cmd" data/lang data/lang_rescore \
-       exp/tri3/decode_${dset} exp/tri3/decode_${dset}_rescore
+       data/${dset} exp/tri3/decode_${dset} exp/tri3/decode_${dset}_rescore
   done
+fi
+
+if [ $stage -le 16 ]; then
+  local/run_cleanup_segmentation.sh
 fi
 
 # We removed the GMM+MMI stage that used to exist in the release-1 scripts,

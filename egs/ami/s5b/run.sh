@@ -97,7 +97,7 @@ if [ $stage -le 5 ]; then
   # Full set 77h, reduced set 10.8h,
   utils/subset_data_dir.sh data/$mic/train 15000 data/$mic/train_15k
 
-  steps/train_mono.sh --nj $nj --cmd "$train_cmd" --cmvn-opts "--norm-means=true --norm-vars=false" \
+  steps/train_mono.sh --nj $nj --cmd "$train_cmd" \
     data/$mic/train_15k data/lang exp/$mic/mono
   steps/align_si.sh --nj $nj --cmd "$train_cmd" \
     data/$mic/train data/lang exp/$mic/mono exp/$mic/mono_ali
@@ -105,7 +105,7 @@ fi
 
 # context-dep. training with delta features.
 if [ $stage -le 6 ]; then
-  steps/train_deltas.sh --cmd "$train_cmd" --cmvn-opts "--norm-means=true --norm-vars=false" \
+  steps/train_deltas.sh --cmd "$train_cmd" \
     5000 80000 data/$mic/train data/lang exp/$mic/mono_ali exp/$mic/tri1
   steps/align_si.sh --nj $nj --cmd "$train_cmd" \
     data/$mic/train data/lang exp/$mic/tri1 exp/$mic/tri1_ali

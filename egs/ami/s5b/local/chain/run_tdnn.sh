@@ -5,9 +5,12 @@
 # local/nnet3/run_tdnn.sh --stage 8 --use-ihm-ali true --mic sdm1
 # local/nnet3/run_tdnn.sh --stage 8 --use-ihm-ali false --mic sdm1
 
-# local/chain/run_tdnn.sh --use-ihm-ali true --mic sdm1 --train-set train --gmm tri3 --nnet3-affix ""
+# local/chain/run_tdnn.sh --use-ihm-ali true --mic sdm1 --train-set train --gmm tri3 --nnet3-affix "" --stage 12 &
 
-#local/chain/run_tdnn.sh --mic sdm1 --use-ihm-ali true --train-set train_cleaned  --gmm tri3_cleaned&
+# local/chain/run_tdnn.sh --use-ihm-ali true --mic mdm8 --stage 12 &
+# local/chain/run_tdnn.sh --use-ihm-ali true --mic mdm8 --train-set train --gmm tri3 --nnet3-affix "" --stage 12 &
+
+# local/chain/run_tdnn.sh --mic sdm1 --use-ihm-ali true --train-set train_cleaned  --gmm tri3_cleaned&
 
 #local/chain/run_tdnn.sh --mic ihm --train-set train_cleaned2  --gmm tri4a_cleaned2  --stage 11 &
 

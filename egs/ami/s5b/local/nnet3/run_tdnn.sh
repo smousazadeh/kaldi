@@ -7,8 +7,9 @@
 
 # local/nnet3/run_tdnn.sh --mic sdm1 --use-ihm-ali true
 
-# local/nnet3/run_tdnn.sh --mic ihm --stage 11 --affix _cleaned2 --gmm tri4a_cleaned2 --train-set train_cleaned2 &
-
+# local/nnet3/run_tdnn.sh --mic ihm --stage 11
+# local/nnet3/run_tdnn.sh --mic ihm --train-set train --gmm tri3 --nnet3-affix "" &
+#
 # local/nnet3/run_tdnn.sh --mic sdm1 --stage 11 --affix _cleaned2 --gmm tri4a_cleaned2 --train-set train_cleaned2 &
 
 # local/nnet3/run_tdnn.sh --use-ihm-ali true --mic sdm1 --train-set train --gmm tri3 --nnet3-affix "" &

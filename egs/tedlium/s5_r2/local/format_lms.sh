@@ -19,13 +19,12 @@ set -e
 if [ -f data/lang_nosp/G.fst ] && [ data/lang_nosp/G.fst -nt $small_arpa_lm ]; then
   echo "$0: not regenerating data/lang_nosp/G.fst as it already exists and "
   echo ".. is newer than the source LM."
-
-  echo  "$0: Checking how stochastic G is (the first of these numbers should be small):"
-  fstisstochastic data/lang_nosp/G.fst
-  utils/validate_lang.pl data/lang_nosp || exit 1;
 else
   arpa2fst --disambig-symbol=#0 --read-symbol-table=data/lang_nosp/words.txt \
     "gunzip -c $small_arpa_lm|" data/lang_nosp/G.fst
+  echo  "$0: Checking how stochastic G is (the first of these numbers should be small):"
+  fstisstochastic data/lang_nosp/G.fst || true
+  utils/validate_lang.pl --skip-determinization-check data/lang_nosp
 fi
 
 

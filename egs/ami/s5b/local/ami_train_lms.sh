@@ -29,11 +29,11 @@ web_mtg=
 
 help_message="Usage: "`basename $0`" [options] <train-txt> <dev-txt> <dict> <out-dir>
 Train language models for AMI and optionally for Switchboard, Fisher and web-data from University of Washington.\n
-options: 
+options:
   --help          # print this message and exit
   --fisher DIR    # directory for Fisher transcripts
   --order N       # N-gram order (default: '$order')
-  --swbd DIR      # Directory for Switchboard transcripts 
+  --swbd DIR      # Directory for Switchboard transcripts
   --web-sw FILE   # University of Washington (191M) Switchboard web data
   --web-fsh FILE  # University of Washington (525M) Fisher web data
   --web-mtg FILE  # University of Washington (150M) CMU+ICSI+NIST meeting data
@@ -57,7 +57,14 @@ done
 
 set -o errexit
 mkdir -p $dir
-export LC_ALL=C 
+export LC_ALL=C
+
+if ! command -v ngram-count 2>/dev/null; then
+  echo "$0: SRILM is not installed.  Please install SRILM with:"
+  echo "pushd $KALDI_ROOT; cd tools; extras/install_srilm.sh; popd"
+  echo "[note: this may require registering on the SRILM website.]"
+  exit 1
+fi
 
 cut -d' ' -f6- $train | gzip -c > $dir/train.gz
 cut -d' ' -f6- $dev | gzip -c > $dir/dev.gz
@@ -78,7 +85,7 @@ num_lms=1
 
 if [ ! -z "$swbd" ]; then
   mkdir -p $dir/swbd
-  
+
   find $swbd -iname '*-trans.text' -exec cat {} \; | cut -d' ' -f4- \
     | gzip -c > $dir/swbd/text0.gz
   gunzip -c $dir/swbd/text0.gz | swbd_map_words.pl | gzip -c \
@@ -135,19 +142,19 @@ if [ ! -z "$google1B" ]; then
   num_lms=$[ num_lms + 1 ]
 fi
 
-## The University of Washington conversational web data can be obtained as: 
+## The University of Washington conversational web data can be obtained as:
 ## wget --no-check-certificate http://ssli.ee.washington.edu/data/191M_conversational_web-filt+periods.gz
 if [ ! -z "$web_sw" ]; then
   echo "Interpolating web-LM not implemented yet"
 fi
 
-## The University of Washington Fisher conversational web data can be obtained as: 
+## The University of Washington Fisher conversational web data can be obtained as:
 ## wget --no-check-certificate http://ssli.ee.washington.edu/data/525M_fisher_conv_web-filt+periods.gz
 if [ ! -z "$web_fsh" ]; then
   echo "Interpolating web-LM not implemented yet"
 fi
 
-## The University of Washington meeting web data can be obtained as: 
+## The University of Washington meeting web data can be obtained as:
 ## wget --no-check-certificate http://ssli.ee.washington.edu/data/150M_cmu+icsi+nist-meetings.gz
 if [ ! -z "$web_mtg" ]; then
   echo "Interpolating web-LM not implemented yet"
@@ -171,6 +178,6 @@ if [ $num_lms -gt 1  ]; then
   ngram -unk -lm $dir/${mix_tag}.o${order}g.kn.gz -ppl $dir/dev.gz
 fi
 
-#save the lm name for furher use
+#save the lm name for further use
 echo "${mix_tag}.o${order}g.kn" > $dir/final_lm
 
