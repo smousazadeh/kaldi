@@ -20,14 +20,15 @@ parser = argparse.ArgumentParser(
     description = "This program produces segmentation and text information "
     "based on reading ctm-edits input format which is produced by "
     "steps/cleanup/internal/get_ctm_edits.py, steps/cleanup/internal/modify_ctm_edits.py and "
-    "steps/cleanup/internal/taint_ctm_edits.py.")
+    "steps/cleanup/internal/taint_ctm_edits.py.",
+ formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument("--min-segment-length", type = float, default = 0.5,
                     help = "Minimum allowed segment length (in seconds) for any "
                     "segment; shorter segments than this will be discarded.")
 parser.add_argument("--min-new-segment-length", type = float, default = 1.0,
                     help = "Minimum allowed segment length (in seconds) for newly "
-                    "created segments (i.e. not identical to the input utterances)"
+                    "created segments (i.e. not identical to the input utterances). "
                     "Expected to be >= --min-segment-length.")
 parser.add_argument("--frame-length", type = float, default = 0.01,
                     help = "This only affects rounding of the output times; they will "
