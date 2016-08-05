@@ -164,5 +164,12 @@ if [ $stage -le 11 ]; then
   local/chain/run_tdnn.sh $ali_opt --mic $mic
 fi
 
+if [ $stage -le 12 ]; then
+#  the following shows how you would run the nnet3 system; we comment it out
+#  because it's not as good as the chain system.
+#  ali_opt=
+#  [ "$mic" != "ihm" ] && ali_opt="--use-ihm-ali true"
+# local/nnet3/run_tdnn.sh $ali_opt --mic $mic
+fi
 
 exit 0

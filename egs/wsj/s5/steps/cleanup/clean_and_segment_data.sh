@@ -155,10 +155,10 @@ if [ $stage -le 7 ]; then
       --ctm-edits-out=$dir/ctm_edits.segmented \
       --word-stats-out=$dir/word_stats.txt \
       $dir/non_scored_words.txt \
-      $dir/ctm_edits.tainted $dir/text $dir/segments.orig
+      $dir/ctm_edits.tainted $dir/text $dir/segments
 
-  echo "$0: for global segmentation stats, including the amount of data retained at various processing stages,"
-  echo " ... see $dir/log/segment_ctm_edits.log"
+  echo "$0: contents of $dir/log/segment_ctm_edits.log are:"
+  cat $dir/log/segment_ctm_edits.log
   echo "For word-level statistics on p(not-being-in-a-segment), with 'worst' words at the top,"
   echo "see $dir/word_stats.txt"
   echo "For detailed utterance-level debugging information, see $dir/ctm_edits.segmented"
@@ -181,7 +181,7 @@ if [ $stage -le 8 ]; then
   # there are values other than the most-frequent one (0.02) in there because
   # of wav files that were shorter than the segment info.
   padding=$(head -n 1 $dir/padding_frequencies | awk '{print $2}')
-  echo "$0: we'll segments with $padding seconds at segment ends to correct for feature-generation end effects"
+  echo "$0: we'll pad segments with $padding seconds at segment ends to correct for feature-generation end effects"
   echo $padding >$dir/segment_end_padding
 fi
 
