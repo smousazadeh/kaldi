@@ -85,9 +85,9 @@ done
 
 
 if $write_utt2num_frames; then
-  write_lengths_opt="--write-lengths=ark,t:$logdir/utt2num_frames.JOB"
+  write_num_frames_opt="--write-num-frames=ark,t:$logdir/utt2num_frames.JOB"
 else
-  write_lengths_opt=
+  write_num_frames_opt=
 fi
 
 
@@ -105,7 +105,7 @@ if [ -f $data/segments ]; then
   $cmd JOB=1:$nj $logdir/make_mfcc_${name}.JOB.log \
     extract-segments scp,p:$scp $logdir/segments.JOB ark:- \| \
     compute-mfcc-feats $vtln_opts --verbose=2 --config=$mfcc_config ark:- ark:- \| \
-    copy-feats --compress=$compress $write_lengths_opt ark:- \
+    copy-feats --compress=$compress $write_num_frames_opt ark:- \
       ark,scp:$mfccdir/raw_mfcc_$name.JOB.ark,$mfccdir/raw_mfcc_$name.JOB.scp \
      || exit 1;
 
@@ -125,7 +125,7 @@ else
   $cmd JOB=1:$nj $logdir/make_mfcc_${name}.JOB.log \
     compute-mfcc-feats  $vtln_opts --verbose=2 --config=$mfcc_config \
      scp,p:$logdir/wav_${name}.JOB.scp ark:- \| \
-      copy-feats $write_lengths_opt --compress=$compress ark:- \
+      copy-feats $write_num_frames_opt --compress=$compress ark:- \
       ark,scp:$mfccdir/raw_mfcc_$name.JOB.ark,$mfccdir/raw_mfcc_$name.JOB.scp \
       || exit 1;
 fi
