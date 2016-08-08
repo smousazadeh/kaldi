@@ -48,3 +48,13 @@ for d in  exp/tri3_cleaned/decode_*; do grep Sum $d/score*/*ys | utils/best_wer.
 %WER 16.7 | 1155 27500 | 85.6 10.9 3.4 2.3 16.7 87.0 | -0.066 | exp/tri3_cleaned/decode_test_rescore/score_15_0.0/ctm.filt.filt.sys
 
 
+####### nnet3 results #####
+
+# tdnn, small LM
+for x in exp/nnet3_cleaned/tdnn_sp/decode_*; do grep Sum $x/*ore*/*ys | utils/best_wer.sh; done
+%WER 12.5 | 507 17783 | 89.6 7.4 2.9 2.2 12.5 83.6 | -0.118 | exp/nnet3_cleaned/tdnn_sp/decode_dev/score_10_0.0/ctm.filt.filt.sys
+%WER 11.4 | 1155 27500 | 90.0 7.2 2.8 1.4 11.4 78.1 | -0.056 | exp/nnet3_cleaned/tdnn_sp/decode_test/score_11_0.0/ctm.filt.filt.sys
+
+# tdnn, large LM
+%WER 11.9 | 507 17783 | 90.0 7.0 3.0 1.9 11.9 81.9 | -0.072 | exp/nnet3_cleaned/tdnn_sp/decode_dev_rescore/score_11_0.0/ctm.filt.filt.sys
+%WER 10.8 | 1155 27500 | 90.6 6.7 2.7 1.4 10.8 76.6 | -0.101 | exp/nnet3_cleaned/tdnn_sp/decode_test_rescore/score_11_0.0/ctm.filt.filt.sys
