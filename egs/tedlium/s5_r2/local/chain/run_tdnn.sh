@@ -101,7 +101,7 @@ if [ $stage -le 15 ]; then
   rm $lat_dir/fsts.*.gz # save space
 fi
 
-if [ $stage -le 15 ]; then
+if [ $stage -le 16 ]; then
   # Build a tree using our new topology.  We know we have alignments for the
   # speed-perturbed data (local/nnet3/run_ivector_common.sh made them), so use
   # those.
@@ -115,7 +115,7 @@ if [ $stage -le 15 ]; then
       --cmd "$train_cmd" 4000 ${lores_train_data_dir} data/lang_chain $ali_dir $tree_dir
 fi
 
-if [ $stage -le 16 ]; then
+if [ $stage -le 17 ]; then
   mkdir -p $dir
 
   echo "$0: creating neural net configs";
@@ -135,7 +135,7 @@ if [ $stage -le 16 ]; then
    $dir/configs || exit 1;
 fi
 
-if [ $stage -le 17 ]; then
+if [ $stage -le 18 ]; then
   if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d $dir/egs/storage ]; then
     utils/create_split_dir.pl \
      /export/b0{5,6,7,8}/$USER/kaldi-data/egs/ami-$(date +'%m_%d_%H_%M')/s5/$dir/egs/storage $dir/egs/storage
@@ -172,14 +172,14 @@ fi
 
 
 
-if [ $stage -le 18 ]; then
+if [ $stage -le 19 ]; then
   # Note: it might appear that this data/lang_chain directory is mismatched, and it is as
   # far as the 'topo' is concerned, but this script doesn't read the 'topo' from
   # the lang directory.
   utils/mkgraph.sh --left-biphone --self-loop-scale 1.0 data/lang $dir $dir/graph
 fi
 
-if [ $stage -le 19 ]; then
+if [ $stage -le 20 ]; then
   rm $dir/.error 2>/dev/null || true
   for dset in dev test; do
       (
