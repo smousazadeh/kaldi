@@ -15,11 +15,13 @@ dir=$1
 
 if [ ! -d $dir ]; then
   echo "$0: directory $dir does not exist."
+  exit 1
 fi
 
 for f in images.scp labels.txt classes.txt num_colors; do
   if [ ! -s "$dir/$f" ]; then
     echo "$0: expected file $dir/$f to exist and be nonempty"
+    exit 1
   fi
 done
 
@@ -40,7 +42,7 @@ if ! [[ $[$num_cols%$num_colors] == 0 ]]; then
   exit 1
 fi
 
-num_rows=$(head -n 1 $dir/images.scp | feat-to-len $paf scp:- -)
+num_rows=$(head -n 1 $dir/images.scp | feat-to-len $paf scp:- ark,t:- | awk '{print $2}')
 
 height=$[$num_cols/$num_colors]
 
@@ -56,14 +58,14 @@ if ! [[ $num_cols -eq $(tail -n 1 $dir/images.scp | feat-to-dim $paf scp:- -) ]]
   exit 1
 fi
 
-if ! [[ $num_rows -eq $(tail -n 1 $dir/images.scp | feat-to-len scp:- -) ]]; then
+if ! [[ $num_rows -eq $(tail -n 1 $dir/images.scp | feat-to-len $paf scp:- ark,t:- | awk '{print $2}') ]]; then
   echo "$0: the number of rows in the image matrices is not consistent."
   exit 1
 fi
 
 # Note: we don't require images.scp and labels.txt to be sorted, but they
 # may not contain repeated keys.
-if ! awk '{if($1 in a) { print "validate_image_dir.sh: key " $1 " is repeated in labels.txt"; exit 1; } a[$1]=1; }'; then
+if ! awk '{if($1 in a) { print "validate_image_dir.sh: key " $1 " is repeated in labels.txt, line is: " $0; exit 1; } a[$1]=1; }' <$dir/labels.txt; then
   exit 1
 fi
 
