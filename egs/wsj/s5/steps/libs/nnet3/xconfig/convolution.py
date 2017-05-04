@@ -98,6 +98,14 @@ from libs.nnet3.xconfig.basic_layers import XconfigLayerBase
 #                            ReLUs into the appropriate range in cases where
 #                            the unit is active either too little of the time
 #                            (<10%) or too much of the time (>90%).
+#   num-blocks=1             This value, if specified, must divide the
+#                            num-filters-in and num-filters-out.  It divides the
+#                            filters up into blocks such that, the 1st
+#                            output block of filters only 'sees' the 1st
+#                            input block of filters, the 2nd only sees the 2nd,
+#                            and so on.  The number of parameters in the layer
+#                            is proportional to 1/num-blocks.
+#
 #
 # The following initialization and natural-gradient related options are, if
 # provided, passed through to the config file; if not, they are left at the
@@ -126,6 +134,7 @@ class XconfigConvLayer(XconfigLayerBase):
                        'required-time-offsets':'',
                        'target-rms':1.0,
                        'self-repair-scale': 2.0e-05,
+                       'num-blocks': 1,
                        # the following are not really inspected by this level of
                        # code, just passed through (but not if left at '').
                        'param-stddev':'', 'bias-stddev':'',
@@ -202,6 +211,14 @@ class XconfigConvLayer(XconfigLayerBase):
             raise RuntimeError("Config value target-rms={0} is not valid".format(
                 self.config['target_rms']))
 
+        num_blocks = self.config['num-blocks']
+        if num_blocks < 1:
+            raise RuntimeError("num-blocks < 1 is not allowed.")
+        elif (self.config['num-filters-in'] % num_blocks != 0 or \
+             self.config['num-filters-out'] % num_blocks != 0):
+            raise RuntimeError("num-blocks must divide num-filters-in and "
+                               "num-filters-out")
+
     def auxiliary_outputs(self):
         return []
 
@@ -236,6 +253,7 @@ class XconfigConvLayer(XconfigLayerBase):
         configs = []
 
         name = self.name
+        num_blocks = self.config['num-blocks']   # will normally be 1.
 
         # These 3 variables will be updated as we add components.
         cur_num_filters = self.config['num-filters-in']
@@ -265,8 +283,13 @@ class XconfigConvLayer(XconfigLayerBase):
                 conv_opts = ' '.join(a)
 
                 configs.append("### Begin convolutional layer '{0}'".format(name))
-                configs.append('component name={0}.conv type=TimeHeightConvolutionComponent '
-                               '{1}'.format(name, conv_opts))
+                if num_blocks == 1:
+                    configs.append('component name={0}.conv type=TimeHeightConvolutionComponent '
+                                   '{1}'.format(name, conv_opts))
+                else:
+                    configs.append('component name={0}.conv type=BlockTimeHeightConvolutionComponent '
+                                   'num-blocks={1} {2}'.format(name, num_blocks, conv_opts))
+
                 configs.append('component-node name={0}.conv component={0}.conv '
                                'input={1}'.format(name, cur_descriptor))
                 cur_num_filters = self.config['num-filters-out']
