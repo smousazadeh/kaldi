@@ -1350,7 +1350,7 @@ void ComputeExampleComputationRequestSimple(
 static void GenerateRandomComponentConfig(std::string *component_type,
                                           std::string *config) {
 
-  int32 n = RandInt(0, 32);
+  int32 n = RandInt(0, 33);
   BaseFloat learning_rate = 0.001 * RandInt(1, 100);
 
   std::ostringstream os;
@@ -1671,6 +1671,12 @@ static void GenerateRandomComponentConfig(std::string *component_type,
       os << "input-dim=" << input_dim
          << " output-dim=" << output_dim
          << " scale=" << scale;
+      break;
+    }
+    case 33: {
+      *component_type = "NudgeComponent";
+      BaseFloat dim = RandInt(1, 10);
+      os << "dim=" << dim << " scale=1.0e-07 p1=-2 p2=-1 p3=0 p4=1 p5=2";
       break;
     }
     default:

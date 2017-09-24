@@ -44,6 +44,16 @@ struct MatrixElement {
   Real weight;
 };
 
+// The typedef BaseFloat_cuda is just a replication of the typedef
+// BaseFloat that we made in ../base/kaldi-types.h.  We give it the
+// suffix _cuda so that there isn't a chance of collisions.
+#if (KALDI_DOUBLEPRECISION != 0)
+typedef double  BaseFloat_cuda;
+#else
+typedef float   BaseFloat_cuda;
+#endif
+
+
 extern "C" {
   /**
    * Structure containing size of the matrix plus stride.

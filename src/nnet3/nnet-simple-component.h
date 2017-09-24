@@ -2411,6 +2411,97 @@ class CompositeComponent: public UpdatableComponent {
 };
 
 
+/**
+   Class NudgeComponent does not change its output, but adds a small amount to
+   the derivatives being backpropagated, in order to nudge the input values
+   toward certain regions.  The basic idea is similar to self-repair, except
+   it's simpler: it doesn't depend on the stats, the term added to the backpropagated
+   derivative is a simple function of the input.
+
+   The basic idea is that there are certain regions of the input/output values
+   that are "discouraged" by this component.  That means that when the values
+   stray into these regions, we add a term to the derivative that encourages them
+   to get out of these regions.  The component supports a setup where values that
+   are too positive, too negative, or are within a specified middle range, are
+   discouraged.  For instance, we'd discourage values x < -5.0, values x >5.0,
+   or are in the range -0.2 < x < 0.2, would be penalized.  In this example,
+   values within the range [-5.0, -0.2] or [0.2, 5.0] would not be penalized at all.
+   The idea here is to encourage a reasonably bimodal distribution of values; you
+   could view it as a form of associative learning, except that it's combined with
+   the backprop'd derivative of the objective function that we are learning.
+
+   Let's suppose these discontininuities are defined as p1, p2, p4 and p5, e.g.
+   in the example p1=-5.0, p2=-0.2, p4=0.2, p5=5.0.
+   The user also has to define "center point", which must be between p2 and p4.
+   For example, p3=0.0.  This is also a discontinuity in the penalty function, it's
+   the point in the center region where the penalty is at a maximum.  The user
+   also supplies a 'scale' (e.g. scale=1.0e-04), which defines how large the
+   penalty function gets.  The penalty function is as follows:
+
+      f(x)   =    if x < p1, then: (p1-x) * scale / (p3 - p1)
+                  if p5 < x, then: (x-p5) * scale / (p5-p3).
+                  if p2 < x < p3, then:  (x-p2) * scale / (p3-p2)
+                  if p3 < x < p4, then: (p4-x) * scale / (p4-p3).
+
+    This might seem a bit arbitrary but there is a certain geometric intuition to it,
+    which may become clear if you draw the graph.
+    This makes the derivative of f(x) equal the following (note: because we're
+    maximizing, we subtract the penalty function from the objective function,
+    which means we add the negative of the following derivative to the backprop'd
+    input).
+
+      f'(x)   =   if x < p1, then: -scale / (p3-p1)
+                  if p5 < x, then:   scale / (p5-p3).
+                  if p2 < x < p3, then:  scale / (p3-p2)
+                  if p3 < x < p4, then:  -scale / (p4-p3).
+
+    On the config line, the following parameters are accepted:
+
+    dim    The input and output dimension.  Required.  E.g. 1024.
+    scale  Scaling factor on the penalty function.  Required and must be > 0.
+           E.g. 0.0001.
+    p1,p2,p3,p4,p5  Points that determine the shape of the penalty function;
+                    they are interpretable as input-activation values, and must
+                    be in increasing order.  Required.  E.g. -5,-1,0,0.2,1.
+ */
+class NudgeComponent: public Component {
+ public:
+  NudgeComponent() { }
+  NudgeComponent(const NudgeComponent &other);
+  virtual int32 Properties() const {
+    return kSimpleComponent|kLinearInInput|kBackpropNeedsOutput|kPropagateInPlace|
+        kBackpropInPlace;
+  }
+  virtual std::string Type() const { return "NudgeComponent"; }
+  virtual void InitFromConfig(ConfigLine *cfl);
+  virtual int32 InputDim() const { return dim_; }
+  virtual int32 OutputDim() const { return dim_; }
+  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                          const CuMatrixBase<BaseFloat> &in,
+                          CuMatrixBase<BaseFloat> *out) const;
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &in_value,
+                        const CuMatrixBase<BaseFloat> &out_value,
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        void *memo,
+                        Component *to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+  virtual Component* Copy() const { return new NudgeComponent(*this); }
+  virtual void Read(std::istream &is, bool binary);
+  virtual void Write(std::ostream &os, bool binary) const;
+
+ private:
+  int32 dim_;
+  BaseFloat scale_;
+  BaseFloat p1_;
+  BaseFloat p2_;
+  BaseFloat p3_;
+  BaseFloat p4_;
+  BaseFloat p5_;
+};
+
+
 } // namespace nnet3
 } // namespace kaldi
 

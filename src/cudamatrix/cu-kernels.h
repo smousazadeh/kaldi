@@ -1341,6 +1341,9 @@ inline void cuda_vec_sum(int Gr, int Bl, float* v, float* value, int dim,
   cudaF_vec_sum(Gr, Bl, v, value, dim, inc);
 }
 
+// cuda_nudge does not need wrapping as it only exists for BaseFloat, so we
+// rely on the declaration in cu-kernels-ansi.h.
+
 } // namespace kaldi
 
 #endif // HAVE_CUDA

@@ -139,6 +139,32 @@ static void UnitTestCuMathSplice() {
   }
 }
 
+static void UnitTestCuMathNudge() {
+  for (int32 i = 0; i < 2; i++) {
+    // this just tests that the CPU and GPU versions do the same thing.
+    int32 num_rows = 1 + Rand() % 100;
+    int32 num_cols = 1 + Rand() % 100;
+    CuMatrix<BaseFloat> cuda_input(num_rows, num_cols);
+    cuda_input.SetRandn();
+    Matrix<BaseFloat> cpu_input(cuda_input);
+
+    BaseFloat scale = 1.0e-02, p1 = -2.0, p2 = -1.0,
+        p3 = 0.0, p4 = 1.0, p5 = 2.0;
+
+    CuMatrix<BaseFloat> cuda_deriv(num_rows, num_cols);
+
+    Matrix<BaseFloat> cpu_deriv(num_rows, num_cols);
+
+    cu::NudgeMatrix(cuda_input, scale, p1, p2, p3, p4, p5, &cuda_deriv);
+
+    cu::CpuNudgeMatrix(cpu_input, scale, p1, p2, p3, p4, p5, &cpu_deriv);
+
+    Matrix<BaseFloat> cpu_deriv2(cuda_deriv);
+    AssertEqual(cpu_deriv, cpu_deriv2);
+  }
+}
+
+
 template<typename Real>
 static void UnitTestCuMathComputeLstmNonlinearity() {
   for (int i = 0; i < 3; i++) {
@@ -630,6 +656,7 @@ template<typename Real> void CudaMathUnitTest() {
 #endif
 
   UnitTestCuMathComputeLstmNonlinearity<Real>();
+  UnitTestCuMathNudge();
   UnitTestCuMathRandomize<Real>();
   UnitTestCuMathSplice<Real>();
   UnitTestCuMathCopy<Real>();

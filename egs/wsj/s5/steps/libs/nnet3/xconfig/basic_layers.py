@@ -639,13 +639,17 @@ class XconfigBasicLayer(XconfigLayerBase):
       add-log-stddev=False     [If true, the log of the stddev of the output of
                                 renorm layer is appended as an
                                 additional dimension of the layer's output]
+      nudge-options=''          [If set to the nonempty string, e.g. to the string
+                                'scale=1.0e-04 p1=-3 p2=-0.5 p1=0.0 p2=0.2 p3=1.0', will
+                                add a NudgeComponent as the first component after the
+                                affine layer.]
     """
     def __init__(self, first_token, key_to_value, prev_names=None):
         # Here we just list some likely combinations.. you can just add any
         # combinations you want to use, to this list.
         assert first_token in ['relu-layer', 'relu-renorm-layer', 'sigmoid-layer',
                                'tanh-layer', 'relu-batchnorm-layer', 'relu-dropout-layer',
-                               'relu-batchnorm-dropout-layer']
+                               'relu-batchnorm-layer', 'relu-batchnorm-dropout-layer']
         XconfigLayerBase.__init__(self, first_token, key_to_value, prev_names)
 
     def set_default_configs(self):
@@ -659,6 +663,7 @@ class XconfigBasicLayer(XconfigLayerBase):
                        'target-rms': 1.0,
                        'learning-rate-factor': 1.0,
                        'ng-affine-options': '',
+                       'nudge-options': '',
                        'dropout-proportion': 0.5,  # dropout-proportion only
                                                    # affects layers with
                                                    # 'dropout' in the name.
@@ -729,6 +734,7 @@ class XconfigBasicLayer(XconfigLayerBase):
         max_change = self.config['max-change']
         ng_affine_options = self.config['ng-affine-options']
         learning_rate_factor = self.config['learning-rate-factor']
+        nudge_options = self.config['nudge-options']
         learning_rate_option = ('learning-rate-factor={0}'.format(learning_rate_factor)
                                 if learning_rate_factor != 1.0 else '')
 
@@ -760,6 +766,9 @@ class XconfigBasicLayer(XconfigLayerBase):
         configs.append(line)
         cur_node = '{0}.affine'.format(self.name)
 
+        if nudge_options != '':
+            nonlinearities = ['nudge'] + nonlinearities
+
         for i, nonlinearity in enumerate(nonlinearities):
             if nonlinearity == 'relu':
                 line = ('component name={0}.{1}'
@@ -781,6 +790,13 @@ class XconfigBasicLayer(XconfigLayerBase):
                         ' self-repair-scale={3}'
                         ''.format(self.name, nonlinearity, output_dim,
                                   self_repair_scale))
+
+            elif nonlinearity == 'nudge':
+                line = ('component name={0}.{1}'
+                        ' type=NudgeComponent dim={2}'
+                        ' {3}'
+                        ''.format(self.name, nonlinearity, output_dim,
+                                  nudge_options))
 
             elif nonlinearity == 'renorm':
                 add_log_stddev = "false"

@@ -5852,6 +5852,84 @@ void SumBlockComponent::Backprop(
   }
 }
 
+NudgeComponent::NudgeComponent(const NudgeComponent &other):
+    dim_(other.dim_), scale_(other.scale_), p1_(other.p1_),
+    p2_(other.p2_), p3_(other.p3_), p4_(other.p4_), p5_(other.p5_) { }
+
+void NudgeComponent::InitFromConfig(ConfigLine *cfl) {
+  bool ok = cfl->GetValue("dim", &dim_) &&
+      cfl->GetValue("scale", &scale_) &&
+      cfl->GetValue("p1", &p1_) &&
+      cfl->GetValue("p2", &p2_) &&
+      cfl->GetValue("p3", &p3_) &&
+      cfl->GetValue("p4", &p4_) &&
+      cfl->GetValue("p5", &p5_);
+  if (!ok) {
+    KALDI_ERR << "Config line requires all of dim,scale,p1,p2,p3,p4,p5: "
+              << cfl->WholeLine();
+  }
+  if (cfl->HasUnusedValues())
+    KALDI_ERR << "Could not process these elements in initializer: "
+              << cfl->UnusedValues();
+  if (!(scale_ > 0 && dim_ > 0 &&
+        p1_ < p2_ && p2_ < p3_ && p3_ < p4_ && p4_ < p5_))
+    KALDI_ERR << "Some of the values in this config line are invalid: "
+              << cfl->WholeLine();
+}
+
+void* NudgeComponent::Propagate(
+    const ComponentPrecomputedIndexes *indexes,
+    const CuMatrixBase<BaseFloat> &in,
+    CuMatrixBase<BaseFloat> *out) const {
+  if (out != &in)
+    out->CopyFromMat(in);
+  return NULL;
+}
+
+void NudgeComponent::Backprop(
+    const std::string &debug_info,
+    const ComponentPrecomputedIndexes *indexes,
+    const CuMatrixBase<BaseFloat> &in_value,
+    const CuMatrixBase<BaseFloat> &out_value,
+    const CuMatrixBase<BaseFloat> &out_deriv,
+    void *memo,
+    Component *to_update,
+    CuMatrixBase<BaseFloat> *in_deriv) const {
+  KALDI_ASSERT(SameDim(out_value, out_deriv) &&
+               memo == NULL && indexes == NULL);
+  if (in_deriv != &out_deriv)
+    in_deriv->CopyFromMat(out_deriv);
+  cu::NudgeMatrix(out_value, scale_, p1_, p2_, p3_, p4_, p5_, in_deriv);
+}
+
+void NudgeComponent::Read(std::istream &is, bool binary) {
+  ExpectOneOrTwoTokens(is, binary, "<NudgeComponent>", "<Dim>");
+  ReadBasicType(is, binary, &dim_);
+  ExpectToken(is, binary, "<Scale>");
+  ReadBasicType(is, binary, &scale_);
+  ExpectToken(is, binary, "<p1-5>");
+  ReadBasicType(is, binary, &p1_);
+  ReadBasicType(is, binary, &p2_);
+  ReadBasicType(is, binary, &p3_);
+  ReadBasicType(is, binary, &p4_);
+  ReadBasicType(is, binary, &p5_);
+  ExpectToken(is, binary, "</NudgeComponent>");
+}
+
+void NudgeComponent::Write(std::ostream &os, bool binary) const {
+  WriteToken(os, binary, "<NudgeComponent>");
+  WriteToken(os, binary, "<Dim>");
+  WriteBasicType(os, binary, dim_);
+  WriteToken(os, binary, "<Scale>");
+  WriteBasicType(os, binary, scale_);
+  WriteToken(os, binary, "<p1-5>");
+  WriteBasicType(os, binary, p1_);
+  WriteBasicType(os, binary, p2_);
+  WriteBasicType(os, binary, p3_);
+  WriteBasicType(os, binary, p4_);
+  WriteBasicType(os, binary, p5_);
+  WriteToken(os, binary, "</NudgeComponent>");
+}
 
 } // namespace nnet3
 } // namespace kaldi

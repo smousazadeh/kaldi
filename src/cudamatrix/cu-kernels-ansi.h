@@ -680,6 +680,14 @@ void cudaF_vec_soft_max(int Gr, int Bl, float* v, int dim);
 void cudaD_vec_sum(int Gr, int Bl, double* v, double* value, int dim, int inc);
 void cudaF_vec_sum(int Gr, int Bl, float* v, float* value, int dim, int inc);
 
+
+// Functions that only exist for BaseFloat go here.
+void cuda_nudge(dim3 Gr, dim3 Bl,
+                BaseFloat_cuda scale, BaseFloat_cuda p1, BaseFloat_cuda p2,
+                BaseFloat_cuda p3, BaseFloat_cuda p4, BaseFloat_cuda p5,
+                const BaseFloat_cuda *value, BaseFloat_cuda *deriv,
+                MatrixDim value_dim, int deriv_stride);
+
 } // extern "C"
 
 #endif // HAVE_CUDA

@@ -284,6 +284,31 @@ void DiffNormalizePerRow(const CuMatrixBase<Real> &in_value,
                          CuMatrixBase<Real>* in_deriv);
 
 
+/// This function NudgeMatrix is a special-purpose component relating to
+/// ../nnet3/nudge-component.  'value' and 'deriv' should have the same
+/// dimension.  This function operates elementwise.  Let 'x' be a member
+/// of 'value'.  Then this function subtracts f'(x) to corresponding
+/// element of the derivative 'deriv', where f(x) is as described in
+/// the documentation for NudgeComponent, and its derivative is:
+///      f'(x)   =   if x < p1, then: -scale / (p3-p1)
+///                  if p5 < x, then:   scale / (p5-p3).
+///                  if p2 < x < p3, then:  scale / (p3-p2)
+///                  if p3 < x < p4, then:  -scale / (p4-p3).
+/// We expect scale > 0.0 and p1 < p2 < p3 < p4 < p5.
+void NudgeMatrix(const CuMatrixBase<BaseFloat> &value,
+                 BaseFloat scale, BaseFloat p1,
+                 BaseFloat p2, BaseFloat p3, BaseFloat p4,
+                 BaseFloat p5, CuMatrixBase<BaseFloat> *deriv);
+
+/// CPU version of NudgeMatrix, made available separately for testing purposes
+/// (this is called from the GPU version if there is no GPU being used).
+void CpuNudgeMatrix(const MatrixBase<BaseFloat> &value,
+                    BaseFloat scale, BaseFloat p1,
+                    BaseFloat p2, BaseFloat p3, BaseFloat p4,
+                    BaseFloat p5, MatrixBase<BaseFloat> *deriv);
+
+
+
 } // namespace cu
 } // namespace kaldi
 

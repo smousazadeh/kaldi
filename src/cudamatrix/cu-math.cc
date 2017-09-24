@@ -927,6 +927,64 @@ void BackpropLstmNonlinearity(const CuMatrixBase<double> &input,
                               CuMatrixBase<double> *deriv_sum_out,
                               CuMatrixBase<double> *self_repair_sum_out);
 
+void NudgeMatrix(const CuMatrixBase<BaseFloat> &value,
+                 BaseFloat scale, BaseFloat p1,
+                 BaseFloat p2, BaseFloat p3, BaseFloat p4,
+                 BaseFloat p5, CuMatrixBase<BaseFloat> *deriv) {
+
+#if HAVE_CUDA == 1
+  if (CuDevice::Instantiate().Enabled()) {
+    KALDI_ASSERT(SameDim(value, *deriv));
+    KALDI_ASSERT(scale > 0.0 && p1 < p2 && p2 < p3 && p3 < p4 && p4 < p5);
+
+    CuTimer tim;
+    dim3 dimGrid, dimBlock;
+    GetBlockSizesForSimpleMatrixOperation(NumRows(), NumCols(),
+                                          &dimGrid, &dimBlock);
+
+    cuda_nudge(dimGrid, dimBlock,
+               scale, p1, p2, p3, p4, p5, value.Data(), deriv->Data(),
+               value.Dim(), deriv->Stride());
+    CU_SAFE_CALL(cudaGetLastError());
+
+    CuDevice::Instantiate().AccuProfile(__func__, tim);
+  } else
+#endif
+  {
+    CpuNudgeMatrix(value.Mat(), scale, p1, p2, p3, p4, p5, &(deriv->Mat()));
+  }
+}
+
+
+void CpuNudgeMatrix(const MatrixBase<BaseFloat> &value,
+                    BaseFloat scale, BaseFloat p1,
+                    BaseFloat p2, BaseFloat p3, BaseFloat p4,
+                    BaseFloat p5, MatrixBase<BaseFloat> *deriv) {
+  KALDI_ASSERT(SameDim(value, *deriv));
+  KALDI_ASSERT(scale > 0.0 && p1 < p2 && p2 < p3 && p3 < p4 && p4 < p5);
+  int32 num_rows = value.NumRows(), num_cols = value.NumCols();
+
+  BaseFloat s1 = scale / (p3 - p1),
+      s2 = -scale / (p5 - p3),
+      s3 = -scale / (p3 - p2),
+      s4 = scale / (p4 - p3);
+
+  for (int32 r = 0; r < num_rows; r++) {
+    const BaseFloat *value_data = value.RowData(r);
+    BaseFloat *deriv_data = deriv->RowData(r);
+    for (int32 c = 0; c < num_cols; c++) {
+      BaseFloat x = value_data[c],
+          d;  // d will be -f'(x).
+      if (x < p1) d = s1;
+      else if (x > p5) d = s2;
+      else if (x > p2 && x < p3) d = s3;
+      else if (x > p3 && x < p4) d = s4;
+      else d = 0;
+      deriv_data[c] += d;
+    }
+  }
+}
+
 
 
 } //namespace cu

@@ -2161,6 +2161,33 @@ static void _tanh(Real*y, const Real*x, MatrixDim d, int src_stride) {
   }
 }
 
+
+// See documentation for NudgeMatrix RE what this does and what it
+// is about.
+__global__
+static void _nudge(BaseFloat_cuda scale, BaseFloat_cuda p1, BaseFloat_cuda p2,
+                   BaseFloat_cuda p3, BaseFloat_cuda p4, BaseFloat_cuda p5,
+                   const BaseFloat_cuda *value, BaseFloat_cuda *deriv,
+                   MatrixDim value_dim, int deriv_stride) {
+  // i is column index, j is row index.
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  int j = blockIdx.y * blockDim.y + threadIdx.y;
+  int value_index = i + j * value_dim.stride,
+      deriv_index = i + j * deriv_stride;
+  if (i < value_dim.cols && j < value_dim.rows) {
+    BaseFloat_cuda x = value[value_index], d;
+    if (x < p1) d = scale / (p3 - p1);
+    else if (x > p5) d = scale / (p3 - p5);
+    else if (x > p2 && x < p3) d = scale / (p2 - p3);
+    else if (x > p3 && x < p4) d = scale / (p4 - p3);
+    else d = 0;
+    __syncthreads();  // Ensure that the following reads and writes are
+                      // consolidated.
+    deriv_data[deriv_index]] += d;
+  }
+}
+
+
 template<typename Real>
 __global__
 static void _diff_tanh(Real*eout, const Real*e, const Real*y, MatrixDim d,
@@ -4882,4 +4909,13 @@ void cudaD_diff_normalize_per_row(size_t Gr, size_t Bl, double *id,
                                   bool add_log_stddev) {
   _diff_normalize_per_row<<<Gr, Bl>>>(id, id_stride, iv, iv_dim, od, od_stride,
                                       target_rms, add_log_stddev);
+}
+
+void cuda_nudge(dim3 Gr, dim3 Bl,
+                BaseFloat_cuda scale, BaseFloat_cuda p1, BaseFloat_cuda p2,
+                BaseFloat_cuda p3, BaseFloat_cuda p4, BaseFloat_cuda p5,
+                const BaseFloat_cuda *value, BaseFloat_cuda *deriv,
+                MatrixDim value_dim, int deriv_stride) {
+  _nudge<<<Gr,Bl>>>(scale, p1, p2, p3, p4, p5,
+                    value, deriv, value_dim, deriv_stride);
 }
