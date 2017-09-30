@@ -939,7 +939,7 @@ void NudgeMatrix(const CuMatrixBase<BaseFloat> &value,
 
     CuTimer tim;
     dim3 dimGrid, dimBlock;
-    GetBlockSizesForSimpleMatrixOperation(NumRows(), NumCols(),
+    GetBlockSizesForSimpleMatrixOperation(value.NumRows(), value.NumCols(),
                                           &dimGrid, &dimBlock);
 
     cuda_nudge(dimGrid, dimBlock,

@@ -2476,6 +2476,7 @@ class NudgeComponent: public Component {
   virtual void InitFromConfig(ConfigLine *cfl);
   virtual int32 InputDim() const { return dim_; }
   virtual int32 OutputDim() const { return dim_; }
+  virtual std::string Info() const;
   virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
                           const CuMatrixBase<BaseFloat> &in,
                           CuMatrixBase<BaseFloat> *out) const;

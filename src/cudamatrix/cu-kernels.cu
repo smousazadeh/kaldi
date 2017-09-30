@@ -2183,7 +2183,7 @@ static void _nudge(BaseFloat_cuda scale, BaseFloat_cuda p1, BaseFloat_cuda p2,
     else d = 0;
     __syncthreads();  // Ensure that the following reads and writes are
                       // consolidated.
-    deriv_data[deriv_index]] += d;
+    deriv[deriv_index] += d;
   }
 }
 

@@ -5931,5 +5931,14 @@ void NudgeComponent::Write(std::ostream &os, bool binary) const {
   WriteToken(os, binary, "</NudgeComponent>");
 }
 
+std::string NudgeComponent::Info() const {
+  std::ostringstream stream;
+  stream << Type() << ", dim=" << dim_
+         << ", scale=" << scale_
+         << ", p1=" << p1_ << ", p2=" << p2_ << ", p3=" << p3_
+         << ", p4=" << p4_ << ", p5=" << p5_;
+  return stream.str();
+}
+
 } // namespace nnet3
 } // namespace kaldi
