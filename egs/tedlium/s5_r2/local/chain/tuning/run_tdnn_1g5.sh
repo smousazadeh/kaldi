@@ -1,11 +1,28 @@
 #!/bin/bash
 
+# 1g5 is as 1g4 but doubling all the points p1 through p5.
+
+# local/chain/compare_wer_general.sh exp/chain_cleaned/tdnn1f_sp_bi exp/chain_cleaned/tdnn1g_sp_bi exp/chain_cleaned/tdnn1g2_sp_bi exp/chain_cleaned/tdnn1g3_sp_bi exp/chain_cleaned/tdnn1g4_sp_bi exp/chain_cleaned/tdnn1g5_sp_bi
+# System                tdnn1f_sp_bi tdnn1g_sp_bi tdnn1g2_sp_bi tdnn1g3_sp_bi tdnn1g4_sp_bi tdnn1g5_sp_bi
+# WER on dev(orig)            9.7      11.0      10.8      13.3      10.2       9.8
+# WER on dev(rescored)        9.2      10.4      10.0      13.8       9.6       9.4
+# WER on test(orig)           9.1      10.2       9.9      12.2       9.5       9.3
+# WER on test(rescored)       8.7       9.7       9.5      12.8       8.9       8.8
+# Final train prob        -0.1048   -0.1303   -0.1218   -0.1867   -0.1167   -0.1095
+# Final valid prob        -0.1130   -0.1317   -0.1243   -0.1853   -0.1190   -0.1169
+# Final train prob (xent)   -1.5111   -1.8955   -1.7809   -2.6329   -1.6438   -1.5739
+# Final valid prob (xent)   -1.4980   -1.8424   -1.7408   -2.5655   -1.6130   -1.5558
+
+# 1g4 is as 1g3 but again halving the scale on the nudge and self-repair.
+# 1g3 is as 1g but half the scale on the nudge and self-repair.
+# run_tdnn_1g.sh is like run_tdnn_1f.sh but adding options relating to the 'nudge' idea.
+#
 # run_tdnn_1f.sh is like run_tdnn_1e.sh but it use 2 to 6 jobs and add proportional-shrink 20.
 
 #exp/chain_cleaned/tdnn1e_sp_bi/: num-iters=253 nj=2..12 num-params=7.0M dim=40+100->3597 combine=-0.095->-0.095 xent:train/valid[167,252,final]=(-1.37,-1.31,-1.31/-1.47,-1.44,-1.44) logprob:train/valid[167,252,final]=(-0.087,-0.078,-0.078/-0.102,-0.099,-0.099)
 #exp/chain_cleaned/tdnn1f_sp_bi/: num-iters=444 nj=2..6 num-params=7.0M dim=40+100->3603 combine=-0.114->-0.113 xent:train/valid[295,443,final]=(-1.59,-1.51,-1.49/-1.58,-1.52,-1.50) logprob:train/valid[295,443,final]=(-0.112,-0.102,-0.098/-0.122,-0.113,-0.110)
 
-# local/chain/compare_wer_general.sh exp/chain_cleaned/tdnn1e_sp_bi exp/chain_cleaned/tdnn1f_sp_bi
+# local/chain/compare_wer_general.sh exp/chain_cleaned/tdnn1d_sp_bi exp/chain_cleaned/tdnn1e_sp_bi
 # System                 tdnn1e_sp_bi   tdnn1f_sp_bi
 # WER on dev(orig)            9.2           9.0
 # WER on dev(rescored)        8.6           8.2
@@ -48,7 +65,7 @@ nnet3_affix=_cleaned  # cleanup affix for nnet3 and chain dirs, e.g. _cleaned
 # are just hardcoded at this level, in the commands below.
 train_stage=-10
 tree_affix=  # affix for tree directory, e.g. "a" or "b", in case we change the configuration.
-tdnn_affix=1f  #affix for TDNN directory, e.g. "a" or "b", in case we change the configuration.
+tdnn_affix=1g5  #affix for TDNN directory, e.g. "a" or "b", in case we change the configuration.
 common_egs_dir=  # you can set this to use previously dumped egs.
 
 # End configuration section.
@@ -143,6 +160,9 @@ if [ $stage -le 17 ]; then
   num_targets=$(tree-info $tree_dir/tree |grep num-pdfs|awk '{print $2}')
   learning_rate_factor=$(echo "print 0.5/$xent_regularize" | python)
 
+  nudge_opts1='nudge-options="scale=5.0e-05 p1=-2.0 p2=-0.1 p3=0.0 p4=0.05 p5=1.0" self-repair-scale=1.0e-04'
+  nudge_opts='nudge-options="scale=5.0e-05 p1=-2.0 p2=-0.1 p3=0.0 p4=0.05 p5=1.0" self-repair-scale=5.0e-05'
+
   mkdir -p $dir/configs
   cat <<EOF > $dir/configs/network.xconfig
   input dim=100 name=ivector
@@ -154,12 +174,12 @@ if [ $stage -le 17 ]; then
   fixed-affine-layer name=lda input=Append(-1,0,1,ReplaceIndex(ivector, t, 0)) affine-transform-file=$dir/configs/lda.mat
 
   # the first splicing is moved before the lda layer, so no splicing here
-  relu-batchnorm-layer name=tdnn1 dim=450 self-repair-scale=1.0e-04
-  relu-batchnorm-layer name=tdnn2 input=Append(-1,0,1) dim=450
-  relu-batchnorm-layer name=tdnn3 input=Append(-1,0,1,2) dim=450
-  relu-batchnorm-layer name=tdnn4 input=Append(-3,0,3) dim=450
-  relu-batchnorm-layer name=tdnn5 input=Append(-3,0,3) dim=450
-  relu-batchnorm-layer name=tdnn6 input=Append(-6,-3,0) dim=450
+  relu-batchnorm-layer name=tdnn1 dim=450 $nudge_opts1
+  relu-batchnorm-layer name=tdnn2 input=Append(-1,0,1) dim=450 $nudge_opts
+  relu-batchnorm-layer name=tdnn3 input=Append(-1,0,1,2) dim=450 $nudge_opts
+  relu-batchnorm-layer name=tdnn4 input=Append(-3,0,3) dim=450 $nudge_opts
+  relu-batchnorm-layer name=tdnn5 input=Append(-3,0,3) dim=450 $nudge_opts
+  relu-batchnorm-layer name=tdnn6 input=Append(-6,-3,0) dim=450 $nudge_opts
 
   ## adding the layers for chain branch
   relu-batchnorm-layer name=prefinal-chain input=tdnn6 dim=450 target-rms=0.5
