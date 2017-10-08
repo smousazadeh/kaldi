@@ -147,6 +147,63 @@ class DropoutComponent : public RandomComponent {
   bool dropout_per_frame_;
 };
 
+
+class ShakeComponent: public RandomComponent {
+ public:
+
+  ShakeComponent() { }
+
+  ShakeComponent(const ShakeComponent &other):
+      RandomComponent(other),
+      dim_(other.dim_),
+      shake_scale_(other.shake_scale_),
+      backward_scale_(other.backward_scale_) { }
+
+  virtual int32 Properties() const {
+    return kLinearInInput|kBackpropInPlace|kSimpleComponent|
+        kPropagateInPlace|kRandomComponent|kUsesMemo;
+  }
+  virtual std::string Type() const { return "ShakeComponent"; }
+
+  virtual void InitFromConfig(ConfigLine *cfl);
+
+  virtual int32 InputDim() const { return dim_; }
+
+  virtual int32 OutputDim() const { return dim_; }
+
+  virtual void Read(std::istream &is, bool binary);
+
+  // Write component to stream
+  virtual void Write(std::ostream &os, bool binary) const;
+
+  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                          const CuMatrixBase<BaseFloat> &in,
+                          CuMatrixBase<BaseFloat> *out) const;
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &in_value,
+                        const CuMatrixBase<BaseFloat> &out_value,
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        void *memo,
+                        Component *to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+
+  virtual void DeleteMemo(void *memo) const {
+    delete static_cast<BaseFloat*>(memo);
+  }
+
+  virtual Component* Copy() const;
+
+  virtual std::string Info() const;
+
+ private:
+  int32 dim_;
+  BaseFloat shake_scale_;  // shake_scale_ should be in the range [0, 1];
+                           // the larger it is, the bigger the range of scales.
+  BaseFloat backward_scale_;  // if 0.0, backprop with scale 1.0; if
+                              // 1.0, with the same scale as used in forward pass.
+};
+
 class ElementwiseProductComponent: public Component {
  public:
   void Init(int32 input_dim, int32 output_dim);

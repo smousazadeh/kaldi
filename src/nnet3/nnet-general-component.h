@@ -757,7 +757,121 @@ class DropoutMaskComponent: public RandomComponent {
 };
 
 
+class Shake2ComponentPrecomputedIndexes:
+      public ComponentPrecomputedIndexes {
+ public:
 
+  // num_n_values is the largest value of 'n' encountered in the
+  // input/output indexes, plus one.  It's the same as the number of
+  // sequences in the minibatch.
+  int32 num_n_values;
+
+  // n_values, indexed by the number of rows in the matrices processed
+  // by Propagate() and Backprop(), contains the 'n' values corresponding
+  // to those rows.  each element will be in the range [0, num_n_values - 1].
+  CuArray<int32> n_values;
+
+  // this class has a virtual destructor so it can be deleted from a pointer
+  // to ComponentPrecomputedIndexes.
+  virtual ~Shake2ComponentPrecomputedIndexes() { }
+
+  virtual ComponentPrecomputedIndexes* Copy() const {
+    return new Shake2ComponentPrecomputedIndexes(*this);
+  }
+
+  virtual void Write(std::ostream &ostream, bool binary) const;
+
+  virtual void Read(std::istream &istream, bool binary);
+
+  virtual std::string Type() const { return "Shake2ComponentPrecomputedIndexes"; }
+};
+
+
+class Shake2Component: public RandomComponent {
+ public:
+
+  Shake2Component() { }
+
+  Shake2Component(const Shake2Component &other):
+      RandomComponent(other),
+      dim_(other.dim_),
+      shake_scale_(other.shake_scale_),
+      backward_scale_(other.backward_scale_),
+      num_groups_(other.num_groups_),
+      interpolate_(other.interpolate_) { }
+
+  virtual int32 Properties() const {
+    return kLinearInInput|kBackpropInPlace|
+        kPropagateInPlace|kRandomComponent|kUsesMemo;
+  }
+  virtual std::string Type() const { return "Shake2Component"; }
+
+  virtual void InitFromConfig(ConfigLine *cfl);
+
+  virtual int32 InputDim() const { return dim_; }
+
+  virtual int32 OutputDim() const { return dim_; }
+
+  virtual void Read(std::istream &is, bool binary);
+
+  // Write component to stream
+  virtual void Write(std::ostream &os, bool binary) const;
+
+  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                          const CuMatrixBase<BaseFloat> &in,
+                          CuMatrixBase<BaseFloat> *out) const;
+
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &in_value,
+                        const CuMatrixBase<BaseFloat> &out_value,
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        void *memo,
+                        Component *to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+
+  virtual ComponentPrecomputedIndexes* PrecomputeIndexes(
+      const MiscComputationInfo &misc_info,
+      const std::vector<Index> &input_indexes,
+      const std::vector<Index> &output_indexes,
+      bool need_backprop) const;
+
+  virtual void DeleteMemo(void *memo) const {
+    delete static_cast<CuMatrix<BaseFloat>*>(memo);
+  }
+
+  virtual Component* Copy() const;
+
+  virtual std::string Info() const;
+
+ private:
+
+  // creates and returns a matrix, of dimension indexes.num_n_values
+  // by num_groups_, of the scales that we'll apply in the forward
+  // propagation.  the scales will be in the range [0.0, 2.0], although
+  // if shake_scale_ is less than 1.0 they will be concentrated in the
+  // middle part of that range.
+  CuMatrix<BaseFloat> *CreateMemo(
+      const Shake2ComponentPrecomputedIndexes &indexes) const;
+
+
+  int32 dim_;
+  BaseFloat shake_scale_;  // shake_scale_ should be in the range [0, 1];
+                           // the larger it is, the bigger the range of scales.
+  BaseFloat backward_scale_;  // if 0.0, backprop with scale 1.0; if
+                              // 1.0, with the same scale as used in forward pass.
+  int32 num_groups_;  // Number of groups that get their own scaling factors;
+                      // default is 2.
+  bool interpolate_;  // If true, the column-indexes corresponding to the
+                      // different groups will be arranged as (e.g.) ababab, instead
+                      // of aaaaabbbbbb.  This matters for setups with convolution,
+                      // where we want the groups to correspond to sets of
+                      // filters, and the filter index has stride 1.  This only
+                      // works correctly if num_groups_ divides the number of
+                      // filters, which will usually not be a problem because
+                      // num-groups will likely be 2, and the num-filters is
+                      // usually a power of 2.
+};
 
 
 } // namespace nnet3

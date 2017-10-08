@@ -65,6 +65,8 @@ ComponentPrecomputedIndexes* ComponentPrecomputedIndexes::NewComponentPrecompute
     ans = new TimeHeightConvolutionComponent::PrecomputedIndexes();
   } else if (cpi_type == "RestrictedAttentionComponentPrecomputedIndexes") {
     ans = new RestrictedAttentionComponent::PrecomputedIndexes();
+  } else if (cpi_type == "Shake2ComponentPrecomputedIndexes") {
+    ans = new Shake2ComponentPrecomputedIndexes();
   }
   if (ans != NULL) {
     KALDI_ASSERT(cpi_type == ans->Type());
@@ -167,6 +169,10 @@ Component* Component::NewComponentOfType(const std::string &component_type) {
     ans = new RestrictedAttentionComponent();
   } else if (component_type == "SumBlockComponent") {
     ans = new SumBlockComponent();
+  } else if (component_type == "ShakeComponent") {
+    ans = new ShakeComponent();
+  } else if (component_type == "Shake2Component") {
+    ans = new Shake2Component();
   }
   if (ans != NULL) {
     KALDI_ASSERT(component_type == ans->Type());

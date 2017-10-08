@@ -5852,6 +5852,109 @@ void SumBlockComponent::Backprop(
   }
 }
 
+void ShakeComponent::InitFromConfig(ConfigLine *cfl) {
+  if (!cfl->GetValue("dim", &dim_) ||
+      !cfl->GetValue("shake-scale", &shake_scale_)) {
+    KALDI_ERR << "Expected dim and shake-scale "
+        "to be defined for ShakeComponent, got: " << cfl->WholeLine();
+  }
+  backward_scale_ = 0.0;
+  cfl->GetValue("backward-scale", &backward_scale_);
+  if (cfl->HasUnusedValues())
+    KALDI_ERR << "Could not process these elements in initializer: "
+              << cfl->UnusedValues();
+  if (dim_ <= 0 ||
+      !(shake_scale_ >= 0.0 && shake_scale_ <= 1.0) ||
+      !(backward_scale_ >= 0.0 && backward_scale_ <= 1.0))
+    KALDI_ERR << "Invalid value for shake-scale or dim";
+}
+
+void ShakeComponent::Read(std::istream &is, bool binary) {
+  ExpectOneOrTwoTokens(is, binary, "<ShakeComponent>", "<Dim>");
+  ReadBasicType(is, binary, &dim_);
+  ExpectToken(is, binary, "<ShakeScale>");
+  ReadBasicType(is, binary, &shake_scale_);
+  ExpectToken(is, binary, "<BackwardScale>");
+  ReadBasicType(is, binary, &backward_scale_);
+  ExpectToken(is, binary, "<TestMode>");
+  ReadBasicType(is, binary, &test_mode_);
+  ExpectToken(is, binary, "</ShakeComponent>");
+}
+
+void ShakeComponent::Write(std::ostream &os, bool binary) const {
+  WriteToken(os, binary, "<ShakeComponent>");
+  WriteToken(os, binary, "<Dim>");
+  WriteBasicType(os, binary, dim_);
+  WriteToken(os, binary, "<ShakeScale>");
+  WriteBasicType(os, binary, shake_scale_);
+  WriteToken(os, binary, "<BackwardScale>");
+  WriteBasicType(os, binary, backward_scale_);
+  WriteToken(os, binary, "<TestMode>");
+  WriteBasicType(os, binary, test_mode_);
+  WriteToken(os, binary, "</ShakeComponent>");
+}
+
+std::string ShakeComponent::Info() const {
+  std::ostringstream stream;
+  stream << Type() << ", dim=" << dim_
+         << ", shake-scale=" << shake_scale_
+         << ", backward-scale=" << backward_scale_
+         << ", test-mode="
+         << (test_mode_ ? "true" : "false");
+  return stream.str();
+}
+
+void* ShakeComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
+                                const CuMatrixBase<BaseFloat> &in,
+                                CuMatrixBase<BaseFloat> *out) const {
+  if (out != &in)
+    out->CopyFromMat(in);
+  BaseFloat *alpha_ptr = new BaseFloat;
+  if (!test_mode_ && shake_scale_ > 0.0) {
+    // alpha is a random number between 0 and 2 (although it
+    // is restricted to a smaller part of that range if shake_scale_
+    // is less than 1), and beta is 1 - alpha.
+    BaseFloat alpha = 1.0 + shake_scale_ * (2.0 * RandUniform() - 1.0),
+        beta = 2.0 - alpha;
+    *alpha_ptr = alpha;
+    int32 half_dim = dim_ / 2;
+    out->ColRange(0, half_dim).Scale(alpha);
+    out->ColRange(half_dim, dim_ - half_dim).Scale(beta);
+  } else {
+    *alpha_ptr = 1.0;
+  }
+  return static_cast<void*>(alpha_ptr);
+}
+
+void ShakeComponent::Backprop(
+    const std::string &debug_info,
+    const ComponentPrecomputedIndexes *indexes,
+    const CuMatrixBase<BaseFloat> &, //in_value
+    const CuMatrixBase<BaseFloat> &, // out_value,
+    const CuMatrixBase<BaseFloat> &out_deriv,
+    void *memo,
+    Component *to_update,
+    CuMatrixBase<BaseFloat> *in_deriv) const {
+  KALDI_ASSERT(memo != NULL);
+  BaseFloat *alpha_ptr = static_cast<BaseFloat*>(memo);
+  if (in_deriv) {
+    if (in_deriv != &out_deriv)
+      in_deriv->CopyFromMat(out_deriv);
+    BaseFloat alpha = *alpha_ptr;
+    // apply backward_scale.
+    alpha = 1.0 + backward_scale_ * (alpha - 1.0);
+    BaseFloat beta = 2.0 - alpha;
+    if (alpha != 1.0) {
+      int32 half_dim = dim_ / 2;
+      in_deriv->ColRange(0, half_dim).Scale(alpha);
+      in_deriv->ColRange(half_dim, dim_ - half_dim).Scale(beta);
+    }
+  }
+}
+
+Component* ShakeComponent::Copy() const {
+  return new ShakeComponent(*this);
+}
 
 } // namespace nnet3
 } // namespace kaldi

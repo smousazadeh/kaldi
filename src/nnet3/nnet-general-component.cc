@@ -1484,7 +1484,260 @@ void DropoutMaskComponent::InitFromConfig(ConfigLine *cfl) {
 }
 
 
+void Shake2ComponentPrecomputedIndexes::Write(std::ostream &os,
+                                              bool binary) const {
+  WriteToken(os, binary, "<Shake2ComponentPrecomputedIndexes>");
+  WriteToken(os, binary, "<NumNValues>");
+  WriteBasicType(os, binary, num_n_values);
+  WriteToken(os, binary, "<NValues>");
+  n_values.Write(os, binary);
+  WriteToken(os, binary, "</Shake2ComponentPrecomputedIndexes>");
 
+}
+
+void Shake2ComponentPrecomputedIndexes::Read(std::istream &is, bool binary) {
+  ExpectOneOrTwoTokens(is, binary, "<Shake2ComponentPrecomputedIndexes>",
+                       "<NumNValues>");
+  ReadBasicType(is, binary, &num_n_values);
+  ExpectToken(is, binary, "<NValues>");
+  n_values.Read(is, binary);
+  ExpectToken(is, binary, "</Shake2ComponentPrecomputedIndexes>");
+}
+
+void Shake2Component::InitFromConfig(ConfigLine *cfl) {
+  if (!cfl->GetValue("dim", &dim_) ||
+      !cfl->GetValue("shake-scale", &shake_scale_)) {
+    KALDI_ERR << "Expected dim and shake-scale "
+        "to be defined for Shake2Component, got: " << cfl->WholeLine();
+  }
+  backward_scale_ = 0.0;
+  cfl->GetValue("backward-scale", &backward_scale_);
+  num_groups_ = 2;
+  cfl->GetValue("num-groups", &num_groups_);
+  interpolate_ = false;
+  cfl->GetValue("interpolate", &interpolate_);
+  if (cfl->HasUnusedValues())
+    KALDI_ERR << "Could not process these elements in initializer: "
+              << cfl->UnusedValues();
+  if (dim_ <= 0 ||
+      num_groups_ < 2 || num_groups_ > dim_ ||
+      !(shake_scale_ >= 0.0 && shake_scale_ <= 1.0) ||
+      !(backward_scale_ >= 0.0 && backward_scale_ <= 1.0))
+    KALDI_ERR << "Invalid value for shake-scale or dim";
+  if (interpolate_ && dim_ % num_groups_ != 0)
+    KALDI_ERR << "'interpolate' is true but num-groups does not divide dim: "
+        "this is likely an error.";
+}
+
+void Shake2Component::Read(std::istream &is, bool binary) {
+  ExpectOneOrTwoTokens(is, binary, "<Shake2Component>", "<Dim>");
+  ReadBasicType(is, binary, &dim_);
+  ExpectToken(is, binary, "<ShakeScale>");
+  ReadBasicType(is, binary, &shake_scale_);
+  ExpectToken(is, binary, "<BackwardScale>");
+  ReadBasicType(is, binary, &backward_scale_);
+  ExpectToken(is, binary, "<NumGroups>");
+  ReadBasicType(is, binary, &num_groups_);
+  ExpectToken(is, binary, "<TestMode>");
+  ReadBasicType(is, binary, &test_mode_);
+
+  if (PeekToken(is, binary) == 'I') {
+    ExpectToken(is, binary, "<Interpolate>");
+    ReadBasicType(is, binary, &test_mode_);
+  }
+  ExpectToken(is, binary, "</Shake2Component>");
+}
+
+void Shake2Component::Write(std::ostream &os, bool binary) const {
+  WriteToken(os, binary, "<Shake2Component>");
+  WriteToken(os, binary, "<Dim>");
+  WriteBasicType(os, binary, dim_);
+  WriteToken(os, binary, "<ShakeScale>");
+  WriteBasicType(os, binary, shake_scale_);
+  WriteToken(os, binary, "<BackwardScale>");
+  WriteBasicType(os, binary, backward_scale_);
+  WriteToken(os, binary, "<NumGroups>");
+  WriteBasicType(os, binary, num_groups_);
+  WriteToken(os, binary, "<TestMode>");
+  WriteBasicType(os, binary, test_mode_);
+  WriteToken(os, binary, "<Interpolate>");
+  WriteBasicType(os, binary, interpolate_);
+  WriteToken(os, binary, "</Shake2Component>");
+}
+
+std::string Shake2Component::Info() const {
+  std::ostringstream stream;
+  stream << Type() << ", dim=" << dim_
+         << ", shake-scale=" << shake_scale_
+         << ", backward-scale=" << backward_scale_
+         << ", num-groups=" << num_groups_
+         << ", test-mode="
+         << (test_mode_ ? "true" : "false")
+         << ", interpolate="
+         << (interpolate_ ? "true" : "false");
+  return stream.str();
+}
+
+void* Shake2Component::Propagate(const ComponentPrecomputedIndexes *indexes_in,
+                                 const CuMatrixBase<BaseFloat> &in,
+                                 CuMatrixBase<BaseFloat> *out) const {
+  if (out != &in)
+    out->CopyFromMat(in);
+
+  const Shake2ComponentPrecomputedIndexes *indexes =
+      dynamic_cast<const Shake2ComponentPrecomputedIndexes*>(indexes_in);
+  KALDI_ASSERT(indexes != NULL);
+
+  CuMatrix<BaseFloat> *scales = CreateMemo(*indexes);
+
+  if (!test_mode_) {
+    if (!interpolate_) {
+      // if the number of columns of the output is not divided by
+      // num_groups_, discard the remaining columns before scaling.
+      int32 reduced_num_cols = num_groups_ * (out->NumCols() / num_groups_);
+      out->ColRange(0, reduced_num_cols).MulRowsGroupMat(*scales);
+    } else {
+      // There isn't a single kernel to do what we want to do, so we
+      // use a temporary matrix.  If we end up using this a lot, we'll
+      // write a new kernel, which will be like case (1) of AddMatBlocks,
+      // but will do per-element multiplication instead of addition.
+      CuMatrix<BaseFloat> full_scales(out->NumRows(), out->NumCols());
+      full_scales.AddMatBlocks(1.0, *scales);
+      out->MulElements(full_scales);
+    }
+  }
+  // modify the scales so they contain the values we want to use for backprop.
+  if (backward_scale_ != 1.0 && backward_scale_ != 0.0) {
+    scales->Scale(backward_scale_);
+    scales->Add(1.0 - backward_scale_);
+  }
+  return static_cast<void*>(scales);
+}
+
+CuMatrix<BaseFloat>* Shake2Component::CreateMemo(
+    const Shake2ComponentPrecomputedIndexes &indexes) const {
+
+  int32 num_n_values = indexes.num_n_values,
+      num_groups = num_groups_;
+
+  if (test_mode_) {
+    // return the empty matrix in test mode.
+    return new CuMatrix<BaseFloat>;
+  }
+
+
+  // 'scales' is the matrix of scales indexed by 'n' value
+  // then group.
+  // You can think of n as the index of the image, or sequence.
+  // group is the group of activations; num_groups will normally
+  // be 2.
+  //
+  // The kStrideEqualNumCols argument is so that the random number generation is
+  // consistent as long as random_generator_ has been seeded consistently.
+  // (It depends on the stride).
+  CuMatrix<BaseFloat> scales(
+      num_n_values, num_groups, kUndefined, kStrideEqualNumCols);
+
+  const_cast<CuRand<BaseFloat>&>(random_generator_).RandUniform(&scales);
+
+  CuVector<BaseFloat> scale_avg(num_n_values);
+  scale_avg.AddColSumMat(1.0 / num_groups, scales);
+
+  // scale_avg(n) is the average of the current values of scales(n).
+
+  // Imagine that we now do:
+  //  scales.AddVecToCols(-1.0, scale_avg, 1.0);
+  // After subtracting the average over the groups, if we sum up the scales for
+  // each 'n' we would get zero.  (The scales are now zero-mean).
+  // The range of the scales at this point would be
+  // [ -(num_groups-1)/num_groups, (num_groups-1)/num_groups ]
+  // which you can figure out from the extremal points where, before subtracting
+  // the average, one is zero and the rest are one, or vice versa.
+
+  // We now want to modify this so that range is [-shake_scale_, +shake_scale_];
+  // and after that we'll add one so the expected scale is 1.0.
+  // So instead of the 'AddVecToCols' call above, we modify it so that
+  // the arguments are 'shake_scale * num_groups / (num_groups - 1).
+
+  BaseFloat scaling_factor = shake_scale_ * num_groups / (num_groups - 1);
+  scales.AddVecToCols(-scaling_factor, scale_avg, scaling_factor);
+  scales.Add(1.0);
+  // At this point the scales in any given row of 'scales' should all be
+  // positive and should have average value 1.
+
+  if (RandInt(0, 100) == 0) {  // TODO: remove this testing code.
+    CuSubVector<BaseFloat> first_row(scales, 0);
+    Vector<BaseFloat> vec(first_row);
+    KALDI_ASSERT(vec(0) > (1.0 - shake_scale_) - 0.001);
+    KALDI_ASSERT(fabs(1.0 - vec.Sum() / vec.Dim()) < 0.001);
+  }
+
+  CuMatrix<BaseFloat> *ans = new CuMatrix<BaseFloat>(
+      indexes.n_values.Dim(), num_groups, kUndefined);
+  ans->CopyRows(scales, indexes.n_values);
+  // now 'ans' contains duplicates; it's now indexed by the row of the matrix
+  // we're processing.
+  return ans;
+}
+
+void Shake2Component::Backprop(
+    const std::string &debug_info,
+    const ComponentPrecomputedIndexes *indexes,
+    const CuMatrixBase<BaseFloat> &, //in_value
+    const CuMatrixBase<BaseFloat> &, // out_value,
+    const CuMatrixBase<BaseFloat> &out_deriv,
+    void *memo,
+    Component *to_update,
+    CuMatrixBase<BaseFloat> *in_deriv) const {
+  KALDI_ASSERT(memo != NULL);
+  const CuMatrix<BaseFloat> *scales =
+      static_cast<const CuMatrix<BaseFloat>*>(memo);
+  if (in_deriv) {
+    if (in_deriv != &out_deriv)
+      in_deriv->CopyFromMat(out_deriv);
+    int32 reduced_num_cols = num_groups_ * (in_deriv->NumCols() / num_groups_);
+    if (backward_scale_ == 0.0 || test_mode_) {
+      return;  // no scaling is needed in backprop
+    } else {
+      if (!interpolate_) {
+        in_deriv->ColRange(0, reduced_num_cols).MulRowsGroupMat(*scales);
+      } else {
+        // this is not as efficient as it could be; see note in the
+        // Propagate function  about how we could optimize it.
+        CuMatrix<BaseFloat> full_scales(in_deriv->NumRows(),
+                                        in_deriv->NumCols());
+        full_scales.AddMatBlocks(1.0, *scales);
+        in_deriv->MulElements(full_scales);
+      }
+    }
+  }
+}
+
+Component* Shake2Component::Copy() const {
+  return new Shake2Component(*this);
+}
+
+ComponentPrecomputedIndexes* Shake2Component::PrecomputeIndexes(
+    const MiscComputationInfo &misc_info,
+    const std::vector<Index> &input_indexes,
+    const std::vector<Index> &output_indexes,
+    bool need_backprop) const {
+  KALDI_ASSERT(input_indexes == output_indexes && !input_indexes.empty());
+  int32 num_n_values = 0;
+  std::vector<int32> n_values(input_indexes.size());
+  for (size_t i = 0; i < input_indexes.size(); i++) {
+    int32 n = input_indexes[i].n;
+    KALDI_ASSERT(n >= 0);
+    if (num_n_values <= n)
+      num_n_values = n + 1;
+    n_values[i] = n;
+  }
+  Shake2ComponentPrecomputedIndexes *ans = new
+      Shake2ComponentPrecomputedIndexes();
+  ans->num_n_values = num_n_values;
+  ans->n_values = n_values;
+  return ans;
+}
 
 } // namespace nnet3
 } // namespace kaldi

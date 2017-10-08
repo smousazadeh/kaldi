@@ -50,6 +50,43 @@ void GenerateConfigSequenceSimplest(
   configs->push_back(os.str());
 }
 
+
+// Like GenerateConfigSequenceSimplest, but adding a ShakeComponent or
+// Shake2Component.
+void GenerateConfigSequenceShake(
+    const NnetGenerationOptions &opts,
+    std::vector<std::string> *configs) {
+  std::ostringstream os;
+
+  int32 input_dim = 10 + Rand() % 20,
+      output_dim = (opts.output_dim > 0 ?
+                    opts.output_dim :
+                    100 + Rand() % 200);
+
+
+  os << "component name=affine1 type=AffineComponent input-dim="
+     << input_dim << " output-dim=" << output_dim << std::endl;
+
+  os << "input-node name=input dim=" << input_dim << std::endl;
+  os << "component-node name=affine1_node component=affine1 input=input\n";
+  if (RandInt(0, 1) == 0) {
+    if (output_dim % 2 == 0) {
+      os << "component name=shake1 type=Shake2Component dim="
+         << output_dim << " interpolate=true shake-scale=0.5 backward-scale=1.0\n";
+    } else {
+      os << "component name=shake1 type=Shake2Component dim="
+         << output_dim << " num-groups=3 shake-scale=0.5 backward-scale=1.0\n";
+    }
+  } else {
+    os << "component name=shake1 type=ShakeComponent dim="
+       << output_dim << " shake-scale=0.5 backward-scale=1.0\n";
+  }
+  os << "component-node name=shake1_node component=shake1 input=affine1_node\n";
+  os << "output-node name=output input=shake1_node\n";
+  configs->push_back(os.str());
+}
+
+
 // A setup with context and an affine component, but no nonlinearity.
 void GenerateConfigSequenceSimpleContext(
     const NnetGenerationOptions &opts,
@@ -1203,7 +1240,7 @@ void GenerateConfigSequence(
     const NnetGenerationOptions &opts,
     std::vector<std::string> *configs) {
 start:
-  int32 network_type = RandInt(0, 14);
+  int32 network_type = RandInt(0, 15);
   switch(network_type) {
     case 0:
       GenerateConfigSequenceSimplest(opts, configs);
@@ -1279,6 +1316,9 @@ start:
         goto start;
       GenerateConfigSequenceRestrictedAttention(opts, configs);
       break;
+    case 15:
+      GenerateConfigSequenceShake(opts, configs);
+      break;
     default:
       KALDI_ERR << "Error generating config sequence.";
   }
@@ -1350,7 +1390,7 @@ void ComputeExampleComputationRequestSimple(
 static void GenerateRandomComponentConfig(std::string *component_type,
                                           std::string *config) {
 
-  int32 n = RandInt(0, 32);
+  int32 n = RandInt(0, 33);
   BaseFloat learning_rate = 0.001 * RandInt(1, 100);
 
   std::ostringstream os;
@@ -1671,6 +1711,11 @@ static void GenerateRandomComponentConfig(std::string *component_type,
       os << "input-dim=" << input_dim
          << " output-dim=" << output_dim
          << " scale=" << scale;
+      break;
+    }
+    case 33: {
+      *component_type = "ShakeComponent";
+      os << " dim=100 shake-scale=0.5 backward-scale=1.0";
       break;
     }
     default:

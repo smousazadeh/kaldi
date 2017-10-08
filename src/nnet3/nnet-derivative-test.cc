@@ -91,6 +91,7 @@ void SetDerivTimesOptions(const ComputationRequest &request,
 void UnitTestNnetModelDerivatives() {
   int32 N = 20;
   for (int32 n = 0; n < N; n++) {
+    int32 srand_seed = rand();
     struct NnetGenerationOptions gen_config;
     //gen_config.allow_nonlinearity = false;
     //gen_config.allow_recursion = false;
@@ -167,6 +168,11 @@ void UnitTestNnetModelDerivatives() {
     // Other passes are with various differently-perturbed versions of
     // the model.
     for (int32 pass = 0; pass <= num_directions; pass++) {
+      // although we require the actual nnet computation to use the same srand
+      // seed for each pass (which affects things like dropout), for this
+      // randomization of perturbing the parameters we need a different random
+      // seed for each pass, which is why we call srand below.
+      srand(srand_seed + pass);
       Nnet nnet_copy(nnet);
       if (pass > 0)
         PerturbParams(delta, &nnet_copy);
@@ -176,7 +182,6 @@ void UnitTestNnetModelDerivatives() {
                             nnet_copy,
                             (pass == 0 ? &nnet_deriv : &nnet_copy));
 
-
       // provide the input to the computation.
       for (size_t i = 0; i < request.inputs.size(); i++) {
         CuMatrix<BaseFloat> temp(inputs[i]);
@@ -184,6 +189,8 @@ void UnitTestNnetModelDerivatives() {
       }
 
       KALDI_LOG << "Running forward computation";
+      srand(srand_seed);
+      ResetGenerators(&nnet_copy);
       computer.Run();
 
       const CuMatrixBase<BaseFloat> &output(computer.GetOutput("output"));
@@ -246,6 +253,7 @@ void UnitTestNnetModelDerivatives() {
 void UnitTestNnetInputDerivatives() {
   int32 N = 20;
   for (int32 n = 0; n < N; n++) {
+    int32 srand_seed = rand();
     struct NnetGenerationOptions gen_config;
     //gen_config.allow_nonlinearity = false;
     //gen_config.allow_recursion = false;
@@ -362,6 +370,8 @@ void UnitTestNnetInputDerivatives() {
       }
 
       KALDI_LOG << "Running forward computation";
+      srand(srand_seed);
+      ResetGenerators(&nnet);
       computer.Run();
 
       const CuMatrixBase<BaseFloat> &output(computer.GetOutput("output"));
