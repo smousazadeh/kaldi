@@ -27,7 +27,7 @@ weblm=
 help_message="Usage: $0 [options] <train-txt> <dict> <out-dir> [fisher-dirs]
 Train language models for Switchboard-1, and optionally for Fisher and \n
 web-data from University of Washington.\n
-options: 
+options:
   --help          # print this message and exit
   --weblm DIR     # directory for web-data from University of Washington
 ";
@@ -53,7 +53,7 @@ done
 loc=`which ngram-count`;
 if [ -z $loc ]; then
   if uname -a | grep 64 >/dev/null; then # some kind of 64 bit...
-    sdir=`pwd`/../../../tools/srilm/bin/i686-m64 
+    sdir=`pwd`/../../../tools/srilm/bin/i686-m64
   else
     sdir=`pwd`/../../../tools/srilm/bin/i686
   fi
@@ -61,17 +61,17 @@ if [ -z $loc ]; then
     echo Using SRILM tools from $sdir
     export PATH=$PATH:$sdir
   else
-    echo You appear to not have SRILM tools installed, either on your path,
-    echo or installed in $sdir.  See tools/install_srilm.sh for installation
-    echo instructions.
+    echo "$0: You appear to not have SRILM tools installed, either on your path,"
+    echo "or installed in $sdir.  See tools/install_srilm.sh for installation"
+    echo "instructions."
     exit 1
   fi
 fi
-    
+
 
 set -o errexit
 mkdir -p $dir
-export LC_ALL=C 
+export LC_ALL=C
 
 heldout_sent=10000
 cut -d' ' -f2- $text | gzip -c > $dir/train.all.gz
@@ -141,6 +141,5 @@ if [ ! -z "$weblm" ]; then
   echo "Interpolating web-LM not implemented yet"
 fi
 
-## The following takes about 11 minutes to download on Eddie: 
+## The following takes about 11 minutes to download on Eddie:
 # wget --no-check-certificate http://ssli.ee.washington.edu/data/191M_conversational_web-filt+periods.gz
-

@@ -90,20 +90,18 @@ fi
 
 # ivector extractor training
 if [ $stage -le 5 ]; then
-  # We need to build a small system just because we need the LDA+MLLT transform
-  # to train the diag-UBM on top of.  We use --num-iters 13 because after we get
-  # the transform (12th iter is the last), any further training is pointless.
-  # this decision is based on fisher_english
-  steps/train_lda_mllt.sh --cmd "$train_cmd" --num-iters 13 \
-    --splice-opts "--left-context=3 --right-context=3" \
-    5500 90000 data/train_100k_nodup_hires \
-    data/lang exp/tri2_ali_100k_nodup exp/nnet3/tri3b
+  echo "$0: computing a PCA transform from the hires data."
+  steps/online/nnet2/get_pca_transform.sh --cmd "$train_cmd" \
+      --splice-opts "--left-context=3 --right-context=3" \
+      --max-utts 10000 --subsample 2 \
+      data/${train_set}_30k_hires \
+     exp/nnet3/pca_transform
 fi
 
 if [ $stage -le 6 ]; then
   # To train a diagonal UBM we don't need very much data, so use the smallest subset.
   steps/online/nnet2/train_diag_ubm.sh --cmd "$train_cmd" --nj 30 --num-frames 200000 \
-    data/${train_set}_30k_nodup_hires 512 exp/nnet3/tri3b exp/nnet3/diag_ubm
+    data/${train_set}_30k_nodup_hires 512 exp/nnet3/pca_transform exp/nnet3/diag_ubm
 fi
 
 if [ $stage -le 7 ]; then

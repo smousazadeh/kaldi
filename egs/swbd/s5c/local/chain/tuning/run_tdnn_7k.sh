@@ -17,7 +17,7 @@ set -e
 
 # configs for 'chain'
 affix=
-stage=12
+stage=0
 train_stage=-10
 get_egs_stage=-10
 speed_perturb=true
