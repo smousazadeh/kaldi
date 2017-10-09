@@ -61,8 +61,8 @@ done
 
 loc=`which change-lm-vocab`
 if [ -z $loc ]; then
-  echo You appear to not have SRILM tools installed.
-  echo cd to $KALDI_ROOT/tools and run extras/install_srilm.sh.
+  echo "$0: You appear to not have SRILM tools installed."
+  echo "cd to $KALDI_ROOT/tools and run extras/install_srilm.sh."
   exit 1
 fi
 

@@ -1543,7 +1543,7 @@ void Shake2Component::Read(std::istream &is, bool binary) {
 
   if (PeekToken(is, binary) == 'I') {
     ExpectToken(is, binary, "<Interpolate>");
-    ReadBasicType(is, binary, &test_mode_);
+    ReadBasicType(is, binary, &interpolate_);
   }
   ExpectToken(is, binary, "</Shake2Component>");
 }

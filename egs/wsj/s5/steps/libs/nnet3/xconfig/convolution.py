@@ -368,6 +368,13 @@ class XconfigConvLayer(XconfigLayerBase):
 #                       set it up, it does zero-padding on the height axis
 #                       regardless
 #
+#  shake-scale=0.0      If you set this to a value that's not 0.0 (e.g. 1.0, or 0.5)
+#                       it will use a method very similar to shake-shake regulariztion.
+#                       see also backward-scale.
+#  backward-scale=0.5   Affects the backpropagated derivative in shake-shake regularization,
+#                       only if shake-scale!=0.0.
+#
+#
 # Less important config variables:
 #  self-repair-scale=2.0e-05  This affects the ReLu's.  It is a scale on the
 #                            'self-repair' mechanism that nudges the inputs to the
@@ -399,14 +406,17 @@ class XconfigResBlock(XconfigLayerBase):
                        'self-repair-scale': 2.0e-05,
                        'max-change': 0.75,
                        'allow-zero-padding': True,
-                       'bypass-source' : 'noop',
+                       'bypass-source': 'noop',
+                       'shake-scale': 0.0,
+                       'backward-scale': 0.5,
+                       'num-groups': 2,
                        # the following are not really inspected by this level of
                        # code, just passed through (but not if left at '').
                        'param-stddev':'', 'bias-stddev':'',
                        'use-natural-gradient':'',
                        'rank-in':'', 'rank-out':'',
                        'num-minibatches-history':'',
-                       'alpha-in':'', 'alpha-out':''}
+                       'alpha-in':'', 'alpha-out':'' }
 
     def set_derived_configs(self):
         # set 'num-filters' or check it..
@@ -532,6 +542,21 @@ class XconfigResBlock(XconfigLayerBase):
             configs.append('component-node name={0}.batchnorm{1} component={0}.batchnorm{1} '
                            'input={2}'.format(name, n, cur_descriptor))
             cur_descriptor = '{0}.batchnorm{1}'.format(name, n)
+
+            # shake-component, if applicable.
+            if n == 2 and self.config['shake-scale'] != 0.0:
+                num_groups = self.config['num-groups']
+                assert num_filters % num_groups == 0 # necessary if using shake component.
+                configs.append('component name={0}.shake2 type=Shake2Component dim={1} '
+                               'interpolate=true shake-scale={2} backward-scale={3} '
+                               'num-groups={4}'.format(
+                                   name, num_filters * height,
+                                   self.config['shake-scale'],
+                                   self.config['backward-scale'],
+                                   self.config['num-groups']))
+                configs.append('component-node name={0}.shake2 component={0}.shake2 '
+                               'input={1}'.format(name, cur_descriptor))
+                cur_descriptor = '{0}.shake2'.format(name)
 
 
             # the convolution.

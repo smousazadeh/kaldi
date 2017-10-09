@@ -23,6 +23,8 @@ config_to_layer = {
         'relu-layer' : xlayers.XconfigBasicLayer,
         'relu-renorm-layer' : xlayers.XconfigBasicLayer,
         'relu-batchnorm-dropout-layer' : xlayers.XconfigBasicLayer,
+        'relu-batchnorm-shake-layer' : xlayers.XconfigBasicLayer,
+        'relu-batchnorm-shake2-layer' : xlayers.XconfigBasicLayer,
         'relu-dropout-layer': xlayers.XconfigBasicLayer,
         'relu-batchnorm-layer' : xlayers.XconfigBasicLayer,
         'sigmoid-layer' : xlayers.XconfigBasicLayer,
@@ -74,7 +76,7 @@ def xconfig_line_to_object(config_line, prev_layers = None):
 
 
 def get_model_component_info(model_filename):
-    """ 
+    """
     This function reads existing model (*.raw or *.mdl) and returns array
     of XconfigExistingLayer one per {input,output}-node or component-node
     with same 'name' used in the raw model and 'dim' equal to 'output-dim'

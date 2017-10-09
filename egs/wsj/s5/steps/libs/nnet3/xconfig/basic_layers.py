@@ -645,7 +645,9 @@ class XconfigBasicLayer(XconfigLayerBase):
         # combinations you want to use, to this list.
         assert first_token in ['relu-layer', 'relu-renorm-layer', 'sigmoid-layer',
                                'tanh-layer', 'relu-batchnorm-layer', 'relu-dropout-layer',
-                               'relu-batchnorm-dropout-layer']
+                               'relu-batchnorm-dropout-layer',
+                               'relu-batchnorm-shake-layer',
+                               'relu-batchnorm-shake2-layer' ]
         XconfigLayerBase.__init__(self, first_token, key_to_value, prev_names)
 
     def set_default_configs(self):
@@ -662,6 +664,9 @@ class XconfigBasicLayer(XconfigLayerBase):
                        'dropout-proportion': 0.5,  # dropout-proportion only
                                                    # affects layers with
                                                    # 'dropout' in the name.
+                       'shake-scale': 0.5,  # shake-scale and backward-scale and num-groups
+                       'backward-scale': 0.0, # only affect layers with 'shake' or 'shake2' in the name.
+                       'num-groups': 2,
                        'add-log-stddev': False}
 
     def check_configs(self):
@@ -806,6 +811,21 @@ class XconfigBasicLayer(XconfigLayerBase):
                         'dim={2} dropout-proportion={3}'.format(
                             self.name, nonlinearity, output_dim,
                             self.config['dropout-proportion']))
+
+            elif nonlinearity == 'shake':
+                line = ('component name={0}.{1} type=ShakeComponent '
+                        'dim={2} shake-scale={3} backward-scale={4}'.format(
+                            self.name, nonlinearity, output_dim,
+                            self.config['shake-scale'],
+                            self.config['backward-scale']))
+
+            elif nonlinearity == 'shake2':
+                line = ('component name={0}.{1} type=Shake2Component '
+                        'dim={2} shake-scale={3} backward-scale={4} num-groups={5}'.format(
+                            self.name, nonlinearity, output_dim,
+                            self.config['shake-scale'],
+                            self.config['backward-scale'],
+                            self.config['num-groups']))
 
             else:
                 raise RuntimeError("Unknown nonlinearity type: {0}"
