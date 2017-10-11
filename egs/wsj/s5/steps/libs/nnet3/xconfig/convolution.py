@@ -651,6 +651,21 @@ class XconfigResBlock(XconfigLayerBase):
                            'input={2}'.format(name, n, cur_descriptor))
             cur_descriptor = '{0}.batchnorm{1}'.format(name, n)
 
+            # shake-component, if applicable.
+            if n == 3 and self.config['shake-scale'] != 0.0:
+                num_groups = self.config['num-groups']
+                assert num_filters_out % num_groups == 0 # necessary if using shake component.
+                configs.append('component name={0}.shake3 type=Shake2Component dim={1} '
+                               'interpolate=true shake-scale={2} backward-scale={3} '
+                               'num-groups={4}'.format(
+                                   name, num_filters_out * height,
+                                   self.config['shake-scale'],
+                                   self.config['backward-scale'],
+                                   self.config['num-groups']))
+                configs.append('component-node name={0}.shake3 component={0}.shake3 '
+                               'input={1}'.format(name, cur_descriptor))
+                cur_descriptor = '{0}.shake3'.format(name)
+
 
             # the convolution.
             a = []
@@ -688,8 +703,9 @@ class XconfigResBlock(XconfigLayerBase):
             configs.append('component name={0}.noop dim={1} type=NoOpComponent'.format(
                 name, dim))
             configs.append('component-node name={0}.noop component={0}.noop '
-                           'input=Sum({1}, {0}.conv3)'.format(name,
-                                                              input_descriptor))
+                           'input=Sum({1}, {2})'.format(name,
+                                                        input_descriptor,
+                                                        cur_descriptor))
 
         # Note: the function 'output_name' is responsible for returning the
         # descriptor corresponding to the output of the network.
