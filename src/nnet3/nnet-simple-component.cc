@@ -2023,7 +2023,8 @@ void PerElementScaleComponent::InitFromConfig(ConfigLine *cfl) {
                    "input-dim mismatch vs. vector.");
   } else {
     if(!cfl->GetValue("dim", &dim))
-      KALDI_ERR << "'dim' not provided in the config line.";
+      KALDI_ERR << "'dim' not provided in the config line: "
+                << cfl->WholeLine();
     BaseFloat param_mean = 1.0, param_stddev = 0.0;
     cfl->GetValue("param-mean", &param_mean);
     cfl->GetValue("param-stddev", &param_stddev);

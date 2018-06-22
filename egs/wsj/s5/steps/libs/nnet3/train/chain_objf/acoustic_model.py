@@ -245,7 +245,7 @@ def train_one_iteration(dir, iter, srand, egs_dir,
                         frame_subsampling_factor,
                         run_opts, dropout_edit_string="", train_opts="",
                         backstitch_training_scale=0.0, backstitch_training_interval=1,
-                        use_multitask_egs=False):
+                        use_multitask_egs=False, model_copy_opts=""):
     """ Called from steps/nnet3/chain/train.py for one iteration for
     neural network training with LF-MMI objective
 
@@ -337,6 +337,7 @@ def train_one_iteration(dir, iter, srand, egs_dir,
         common_train_lib.get_average_nnet_model(
             dir=dir, iter=iter,
             nnets_list=" ".join(nnets_list),
+            model_copy_opts=model_copy_opts,
             run_opts=run_opts)
 
     else:

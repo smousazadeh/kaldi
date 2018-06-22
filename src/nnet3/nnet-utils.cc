@@ -608,7 +608,7 @@ void FindOrphanNodes(const Nnet &nnet, std::vector<int32> *nodes) {
 }
 
 
-// this class implements the internals of the edit directive 'apply-svd'.
+// This class implements the internals of the edit directive 'apply-svd'.
 class SvdApplier {
  public:
   SvdApplier(const std::string component_name_pattern,
@@ -860,6 +860,310 @@ class SvdApplier {
   Nnet *nnet_;
   int32 bottleneck_dim_;
   std::string component_name_pattern_;
+};
+
+
+// This class implements the internals of the edit directive
+// 'normalize-tdnnf-bottleneck'.
+// Before trying to understand this code, please read the
+// comment for 'normalize-tdnnf-bottleneck' in nnet-utils.h
+// which will explain some context.
+class TdnnfNormalizer {
+ public:
+  // Constructor.  To understand 'scale_power' and 'name_pattern' see the
+  // documentation in nnet-utils.h for the 'normalize-tdnnf-bottleneck' command.
+  // You should call Normalize() after constructing the object.
+  TdnnfNormalizer(BaseFloat scale_power,
+                  const char *name_pattern,
+                  Nnet *nnet):
+      scale_power_(scale_power), name_pattern_(name_pattern), nnet_(nnet) { }
+
+
+  // Does the normalization; returns the number of bottlenecks that we
+  // normalized.
+  int32 Normalize() {
+    int32 ans = 0;
+    for (int32 n = 0; n < nnet_->NumNodes(); n++) {
+      if (TryNormalize(n))
+        ans++;
+    }
+    return ans;
+  }
+ private:
+  BaseFloat scale_power_;
+  const char *name_pattern_;
+  Nnet *nnet_;
+
+  // Tries to do the normalization for node-index n (which will be interpreted
+  // as potentially the component-node corresponding to the last of the three
+  // components in the bottleneck).  Returns true if it did something.  It will
+  // return false for most nodes because won't be the right ones.
+  bool TryNormalize(int32 n) {
+    // we're looking for the sequence: tdnn1, scale, tdnn2,
+    // with tdnn1 and tdnn2 of type TdnnComponent and scale of type
+    // PerElementScaleComponent.
+
+    TdnnComponent *tdnn1, *tdnn2;
+    PerElementScaleComponent *scale;
+
+    if (!NameMatchesPattern(nnet_->GetNodeName(n).c_str(),
+                            name_pattern_))
+      return false;
+    const NetworkNode &tdnn_node2 = nnet_->GetNode(n);
+
+    if (tdnn_node2.node_type != kComponent)
+      return false;
+    tdnn2 = dynamic_cast<TdnnComponent*>(
+        nnet_->GetComponent(tdnn_node2.u.component_index));
+    if (tdnn2 == NULL)
+      return false;
+    const NetworkNode &tdnn_node2_input = nnet_->GetNode(n-1);
+    int32 scale_node_index = GetDescriptorInputNode(tdnn_node2_input.descriptor);
+    if (scale_node_index == -1)
+      return false;
+
+    const NetworkNode &scale_node = nnet_->GetNode(scale_node_index);
+    if (scale_node.node_type != kComponent)
+      return false;
+    scale = dynamic_cast<PerElementScaleComponent*>(
+        nnet_->GetComponent(scale_node.u.component_index));
+    if (scale == NULL)
+      return false;
+    const NetworkNode &scale_input = nnet_->GetNode(scale_node_index - 1);
+    int32 tdnn1_node_index = GetDescriptorInputNode(scale_input.descriptor);
+    if (tdnn1_node_index == -1)
+      return false;
+
+    const NetworkNode &tdnn_node1 = nnet_->GetNode(tdnn1_node_index);
+    if (tdnn_node1.node_type != kComponent)
+      return false;
+    tdnn1 = dynamic_cast<TdnnComponent*>(
+        nnet_->GetComponent(tdnn_node1.u.component_index));
+    if (tdnn1 == NULL)
+      return false;
+
+    NormalizeComponents(tdnn1, scale, tdnn2);
+    return true;
+  }
+
+  // This function does the normalization once the sequence of components have
+  // been identified.  It changes the parameters in the components.
+  void NormalizeComponents(TdnnComponent *tdnn1,
+                           PerElementScaleComponent *scale,
+                           TdnnComponent *tdnn2) {
+
+    CuMatrixBase<BaseFloat> &tdnn1_params(tdnn1->LinearParams());
+    Matrix<BaseFloat> tdnn1_params_cpu(tdnn1_params);
+
+    // tdnn1 having a bias would not be a problem-- we could handle it-- but it
+    // would require some extra coding, and I don't anticipate this happening.
+    if (tdnn1->BiasParams().Dim() != 0)
+      KALDI_ERR << "Bias found where it was not expected in NormalizeComponents().";
+
+    CuMatrixBase<BaseFloat> &tdnn2_params(tdnn2->LinearParams());
+    // we to rearrange the blocks of 'tdnn2_params' while copying to the CPU;
+    // for the factorization to have a bottleneck at the center, we need to
+    // rearrange the blocks corresponding to the different offsets.
+
+    // num_offsets2 will normally be 2.
+    int32 bottleneck_dim = tdnn2->InputDim(),
+        output_dim = tdnn2->OutputDim(),
+        num_offsets2 = tdnn2_params.NumCols() / bottleneck_dim;
+    Matrix<BaseFloat> tdnn2_params_cpu(output_dim * num_offsets2,
+                                       bottleneck_dim);
+
+    for (int32 offset = 0; offset < num_offsets2; offset++) {
+      CuSubMatrix<BaseFloat> params_part(tdnn2_params,
+                                         0, tdnn2_params.NumRows(),
+                                         offset * bottleneck_dim,
+                                         bottleneck_dim);
+      SubMatrix<BaseFloat> params_part_cpu(tdnn2_params_cpu,
+                                           output_dim * offset, output_dim,
+                                           0, bottleneck_dim);
+      params_part_cpu.CopyFromMat(params_part);
+    }
+
+    Vector<BaseFloat> scale_params(bottleneck_dim);
+    scale->Vectorize(&scale_params);
+    NormalizeParameters(scale_power_, &tdnn2_params_cpu,
+                        &scale_params, &tdnn1_params_cpu);
+    // Now copy the parameters back to the components.
+    tdnn1_params.CopyFromMat(tdnn1_params_cpu);
+    scale->UnVectorize(scale_params);
+    for (int32 offset = 0; offset < num_offsets2; offset++) {
+      CuSubMatrix<BaseFloat> params_part(tdnn2_params,
+                                         0, tdnn2_params.NumRows(),
+                                         offset * bottleneck_dim,
+                                         bottleneck_dim);
+      SubMatrix<BaseFloat> params_part_cpu(tdnn2_params_cpu,
+                                           output_dim * offset, output_dim,
+                                           0, bottleneck_dim);
+      params_part.CopyFromMat(params_part_cpu);
+    }
+  }
+
+
+  // This function will check whether a Descriptor is simple, meaning (in this
+  // context) that it's just the name of a node, e.g. "tdnnf2.scale", and if it
+  // is simple then it will return the node-index of that node; otherwise it
+  // will return -1.
+  static int32 GetDescriptorInputNode(const Descriptor &descriptor) {
+    if (descriptor.NumParts() != 1)
+      return -1;
+    const SumDescriptor &sum_desc = descriptor.Part(0);
+    // I don't much like having to use dynamic_cast here but it does work.
+    const SimpleSumDescriptor *ss = dynamic_cast<const SimpleSumDescriptor*>(
+        &sum_desc);
+    if (ss == NULL) return -1;
+    const ForwardingDescriptor *fd = &(ss->Src());
+    const SimpleForwardingDescriptor *sd =
+        dynamic_cast<const SimpleForwardingDescriptor*>(fd);
+    if (sd == NULL) return -1;
+    // the following is a rather roundabout way to get the node-index from a
+    // SimpleForwardingDescriptor, but it works (it avoids adding other stuff
+    // to the interface).
+    std::vector<int32> v;
+    sd->GetNodeDependencies(&v);
+    int32 node_index = v[0];
+    return node_index;
+  }
+
+  // This function is the heart of what this class does.  It changes the value
+  // of A, s and B while keeping the product A * diag(s) * B the same.  Here, A
+  // is the parameters of the later of the components; the order is
+  // right-to-left.  At the output, s will be set to the singular values of the
+  // product of the original inputs (A * diag(s) * B), taken to the power
+  // 'scale_power' and renormalized to sum to one, and -- to state it briefly
+  // but imprecisely -- the 'remaining part' of the singular values will be
+  // equally distributed between A and B.
+  static void NormalizeParameters(BaseFloat scale_power,
+                                  MatrixBase<BaseFloat> *A,
+                                  VectorBase<BaseFloat> *s,
+                                  MatrixBase<BaseFloat> *B) {
+    // note: the values dim1 and dim2 will normally be the same but for generality
+    // we don't insist on this.
+    int32 dim1 = A->NumRows(),
+        bottleneck_dim = A->NumCols(),
+        dim2 = B->NumCols();
+
+    Vector<BaseFloat> test_input_vector(dim2),
+        test_output_vector_before(dim1),
+        test_output_vector_after(dim1);
+    test_input_vector.SetRandn();
+    NormalizeParametersTestHelper(test_input_vector, *A, *s, *B,
+                                  &test_output_vector_before);
+
+
+    KALDI_ASSERT(s->Dim() == bottleneck_dim && B->NumRows() == bottleneck_dim);
+    Matrix<BaseFloat> U1(dim1, bottleneck_dim),
+        Vt1(bottleneck_dim, bottleneck_dim),
+        U2(bottleneck_dim, bottleneck_dim),
+        Vt2(bottleneck_dim, dim2);
+    Vector<BaseFloat> s1(bottleneck_dim),
+        s2(bottleneck_dim);
+
+    A->Svd(&s1, &U1, &Vt1);
+    B->Svd(&s2, &U2, &Vt2);
+    // At this point, we have:
+    //   A = U1 * diag(s1) * Vt1.
+    //   B = U2 * diag(s2) * Vt1.
+
+    // Note: Vt1 and Vt2 have the "t" because in the math for how SVD is
+    // normally presented, our "Vt" would be transpose of what we'd normally
+    // call V; but here, it will be easier if you just treat, say, "Vt1" as a
+    // quantity in its own right and forget that "V1" ever existed.
+
+    // OK, so the big matrix M that we are refactorizing can be written as
+    // (the pre-destruction values of):
+    //     M = A * diag(s) * B.
+    // which can be expanded to:
+    //     M = U1 * diag(s1) * Vt1  *  diag(s)  *  U2 * diag(s2) * Vt2.
+    //  Next we compute the following matrix of dimension 'bottleneck_dim * bottleneck_dim':
+    //     N := diag(s1) * Vt1 * diag(s) * U2 * diag(s2).
+    //  so we can simply the above expression for M to:
+    //     M = U1 * N * Vt2.
+    //  Then we'll factorize N via SVD, as:
+    //     N = U3 * diag(s3) * Vt3
+    //  and we can use this to re-factorize M as:
+    //     M = L * diag(s3) * R,
+    //  where
+    //     L = U1 * U3
+    //     R = Vt3 * Vt2
+    //   ... and note that L has orthogonal columns and R has orthogonal rows.
+    //   What we have achieved so far is basically a more efficient way of doing
+    //   the SVD on M (without having to physically construct M, since it will
+    //   tend to be larger than its component parts).
+    //
+    // Now all the preliminaries are done and we can just do as follows (with
+    // ./ meaning elementwise division and sqrt applying elementwise):
+    //   s := s3^scale_power
+    //   s_remaining = s3^(0.5*(1-scale_power))
+    //      ... s_remaining is the scale we'll apply
+    //          to the cols/rows of L/R.  The value
+    //          is chosen such that
+    //          s_remaining * s * s_remaining == s3.
+    //   A := L * diag(s_remaining)
+    //   B := diag(s_remaining) * R
+
+
+    // the next few lines compute:
+    //     N := diag(s1) * Vt1 * diag(s) * U2 * diag(s2).
+    Matrix<BaseFloat> N(bottleneck_dim, bottleneck_dim);
+    U2.MulRowsVec(*s);
+    N.AddMatMat(1.0, Vt1, kNoTrans, U2, kNoTrans, 0.0);
+    N.MulRowsVec(s1);
+    N.MulColsVec(s2);
+    // ok, N is computed.
+
+    // The variables U3, Vt3 and s3 will be references to previous variables that we
+    // no longer need.
+    Matrix<BaseFloat> &U3(U2), &Vt3(Vt1);
+    Vector<BaseFloat> &s3(s1);
+    // Do the SVD:   N = U3 * diag(s3) * Vt3
+    N.Svd(&s3, &U3, &Vt3);
+
+    // The value of A after the statement below will correspond to what, in the
+    // math above, we called "L = U1 * U3".
+    A->AddMatMat(1.0, U1, kNoTrans, U3, kNoTrans, 0.0);
+    // .. and B will correspond to "R = Vt3 * Vt2".
+    B->AddMatMat(1.0, Vt3, kNoTrans, Vt2, kNoTrans, 0.0);
+
+    //   s := s3^scale_power
+    s->CopyFromVec(s3);
+    s->ApplyPow(scale_power);
+
+    //   s_remaining := s3^(0.5*(1-scale_power))
+    Vector<BaseFloat> &s_remaining(s3);
+    s_remaining.ApplyPow(0.5 * (1.0 - scale_power));
+    //   A := L * diag(s_remaining)
+    A->MulColsVec(s_remaining);
+    //   B := diag(s_remaining) * R
+    B->MulRowsVec(s_remaining);
+
+    NormalizeParametersTestHelper(test_input_vector, *A, *s, *B,
+                                  &test_output_vector_after);
+    if (!test_output_vector_before.ApproxEqual(test_output_vector_after,
+                                               0.01)) {
+      KALDI_WARN << "Something went wrong: vectors are not equal, "
+                 << test_output_vector_before
+                 << " vs. " << test_output_vector_after;
+    }
+  }
+
+  // this function, which is a helper-function for the internal test of
+  // NormalizeParameters(), computes:
+  // *output_vector := A * diag(s) * B * input_vector.
+  static void NormalizeParametersTestHelper(
+      const VectorBase<BaseFloat> &input_vector,
+      const MatrixBase<BaseFloat> &A,
+      const VectorBase<BaseFloat> &s,
+      const MatrixBase<BaseFloat> &B,
+      VectorBase<BaseFloat> *output_vector) {
+    Vector<BaseFloat> sBi(B.NumRows());
+    sBi.AddMatVec(1.0, B, kNoTrans, input_vector, 0.0);
+    sBi.MulElements(s);
+    output_vector->AddMatVec(1.0, A, kNoTrans, sBi, 0.0);
+  }
 };
 
 /*
@@ -1312,6 +1616,17 @@ void ReadEditConfig(std::istream &edit_config_is, Nnet *nnet) {
       if (rank <= 0)
         KALDI_ERR << "Rank must be positive in reduce-rank command.";
       ReduceRankOfComponents(name_pattern, rank, nnet);
+    } else if (directive == "normalize-tdnnf-bottleneck") {
+      std::string name_pattern = "*";
+      BaseFloat scale_power = -1;
+      config_line.GetValue("name", &name_pattern);
+      config_line.GetValue("scale-power", &scale_power);
+      if (config_line.HasUnusedValues())
+        KALDI_ERR << "Bad config line (unused values): "
+                  << config_line.WholeLine();
+      TdnnfNormalizer normalizer(scale_power, name_pattern.c_str(), nnet);
+      int32 n = normalizer.Normalize();
+      KALDI_LOG << "Normalized " << n << " TDNNF layers.";
     } else {
       KALDI_ERR << "Directive '" << directive << "' is not currently "
           "supported (reading edit-config).";

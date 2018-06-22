@@ -316,6 +316,30 @@ void CollapseModel(const CollapseModelConfig &config,
        and writes the reconstructed matrix back to the component.  See also
        'apply-svd', which structurally breaks the component into two pieces.
 
+    normalize-tdnnf-bottleneck [name=<name-pattern>] [scale-power=<power>]
+       Locates all TDNNF bottlenecks, which for purposes of this code is
+       the sequence of components:
+       TdnnfComponent, [NaturalGradient]PerElementScaleComponent, TdnnfComponent
+       in which all three component names match <name-pattern>,
+       and normalizes each sequence (which means modifying the parameters
+       to have certain properties).  Let the components be tdnn1, scale, tdnn2,
+       and for the sake of exposition suppose that both tdnn1 and tdnn2 splice 2
+       frames.  Call the 'outer' dimension (the dimension at the input of tdnnf1
+       and the output of tdnnf2) 'dim' and the 'inner' dimension (at
+       the scale component) 'bottleneck_dim'.  What this code does is equivalent
+       to viewing the whole sequence of 3 components as a single matrix of
+       dimension (2 x dim) by (2 x dim) and rank bottleneck_dim, via suitably
+       arranging the different 'offsets' of the TDNN components.
+
+       What this code does has the same effect as doing an SVD on that low-rank
+       matrix, setting the scale component to (the singular values taken to the
+       power 'scale_power'),and then scaling the singular vectors on each side
+       by 'remaining part' of the singular values, which is the singular values
+       to the power 0.5*(1-scale_power) so the matrix remains equivalent.  The
+       point of 'scale-power', which is a tunable value, is to allow us to tune
+       the speed at which the most vs. least important directions in the
+       bottleneck subspace learn.
+
    \endverbatim
 */
 void ReadEditConfig(std::istream &config_file, Nnet *nnet);

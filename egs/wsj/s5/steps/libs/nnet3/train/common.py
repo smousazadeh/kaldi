@@ -1,5 +1,3 @@
-
-
 # Copyright 2016    Vijayaditya Peddinti.
 #           2016    Vimal Manohar
 # Apache 2.0
@@ -137,13 +135,14 @@ def get_successful_models(num_models, log_file_pattern,
 
 
 def get_average_nnet_model(dir, iter, nnets_list, run_opts,
+                           model_copy_opts="",
                            get_raw_nnet_from_am=True):
 
     next_iter = iter + 1
     if get_raw_nnet_from_am:
-        out_model = ("""- \| nnet3-am-copy --set-raw-nnet=-  \
+        out_model = ("""- \| nnet3-am-copy {opts} --set-raw-nnet=- \
                         {dir}/{iter}.mdl {dir}/{next_iter}.mdl""".format(
-                            dir=dir, iter=iter,
+                            opts=model_copy_opts, dir=dir, iter=iter,
                             next_iter=next_iter))
     else:
         out_model = "{dir}/{next_iter}.raw".format(
@@ -873,6 +872,10 @@ class CommonParser(object):
                                  Note: we implemented it in such a way that it
                                  doesn't increase the effective learning
                                  rate.""")
+        self.parser.add_argument("--trainer.tdnnf-bottleneck-power", type=float,
+                                 dest='tdnnf_bottleneck_power',
+                                 help="This option can be used to refactorize TDNNF "
+                                 "blocks during training, to improve optimization.")
         self.parser.add_argument("--trainer.dropout-schedule", type=str,
                                  action=common_lib.NullstrToNoneAction,
                                  dest='dropout_schedule', default=None,

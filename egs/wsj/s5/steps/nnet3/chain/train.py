@@ -506,6 +506,14 @@ def train(args, run_opts):
                                                      percent,
                                                      lrate, shrink_info_str))
 
+            if args.tdnnf_bottleneck_power is not None and \
+               (models_to_combine is None or iter < min(models_to_combine)):
+                model_copy_opts = "--edits='normalize-tdnnf-bottleneck scale-power={0}'".format(
+                    args.tdnnf_bottleneck_power)
+            else:
+                model_copy_opts = ""
+
+
             chain_lib.train_one_iteration(
                 dir=args.dir,
                 iter=iter,
@@ -535,7 +543,8 @@ def train(args, run_opts):
                 run_opts=run_opts,
                 backstitch_training_scale=args.backstitch_training_scale,
                 backstitch_training_interval=args.backstitch_training_interval,
-                use_multitask_egs=use_multitask_egs)
+                use_multitask_egs=use_multitask_egs,
+                model_copy_opts=model_copy_opts)
 
             if args.cleanup:
                 # do a clean up everything but the last 2 models, under certain
