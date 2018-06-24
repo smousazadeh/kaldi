@@ -32,7 +32,9 @@ namespace nnet3 {
 
 TdnnComponent::TdnnComponent():
     orthonormal_constraint_(0.0),
+    joint_l2_regularize_proportion_(0.0),
     use_natural_gradient_(true) { }
+
 
 
 TdnnComponent::TdnnComponent(
@@ -42,6 +44,7 @@ TdnnComponent::TdnnComponent(
     linear_params_(other.linear_params_),
     bias_params_(other.bias_params_),
     orthonormal_constraint_(other.orthonormal_constraint_),
+    joint_l2_regularize_proportion_(other.joint_l2_regularize_proportion_),
     use_natural_gradient_(other.use_natural_gradient_),
     preconditioner_in_(other.preconditioner_in_),
     preconditioner_out_(other.preconditioner_out_) {
@@ -65,6 +68,9 @@ std::string TdnnComponent::Info() const {
   stream << UpdatableComponent::Info();
   if (orthonormal_constraint_ != 0.0)
     stream << ", orthonormal-constraint=" << orthonormal_constraint_;
+  if (joint_l2_regularize_proportion_ != 0.0)
+    stream << ", joint-l2-regularize-proportion="
+           << joint_l2_regularize_proportion_;
   stream << ", time-offsets=";
   for (size_t i = 0; i < time_offsets_.size(); i++) {
     if (i != 0) stream << ',';
@@ -120,8 +126,9 @@ void TdnnComponent::InitFromConfig(ConfigLine *cfl) {
   }
 
   // 3. Parameter-initialization configs, "has-bias", and
-  // orthonormal-constraint.
+  // "orthonormal-constraint" and "joint-l2-regularize-proportion".
   orthonormal_constraint_ = 0.0;
+  joint_l2_regularize_proportion_ = 0.0;
   BaseFloat param_stddev = -1, bias_mean = 0.0, bias_stddev = 1.0;
   bool use_bias = true;
   cfl->GetValue("param-stddev", &param_stddev);
@@ -129,9 +136,17 @@ void TdnnComponent::InitFromConfig(ConfigLine *cfl) {
   cfl->GetValue("bias-mean", &bias_mean);
   cfl->GetValue("use-bias", &use_bias);
   cfl->GetValue("orthonormal-constraint", &orthonormal_constraint_);
+  cfl->GetValue("joint-l2-regularize-proportion",
+                &joint_l2_regularize_proportion_);
   if (param_stddev < 0.0) {
     param_stddev = 1.0 / sqrt(input_dim * time_offsets_.size());
   }
+  if (joint_l2_regularize_proportion_ < 0.0 ||
+      joint_l2_regularize_proportion_ > 1.0) {
+    KALDI_ERR << "Invalid value joint-l2-regularize-proportion="
+              << joint_l2_regularize_proportion_;
+  }
+
   // initialize the parameters.
   linear_params_.Resize(output_dim,
                         input_dim * time_offsets_.size());
@@ -385,6 +400,10 @@ void TdnnComponent::Write(std::ostream &os, bool binary) const {
   bias_params_.Write(os, binary);
   WriteToken(os, binary, "<OrthonormalConstraint>");
   WriteBasicType(os, binary, orthonormal_constraint_);
+  if (joint_l2_regularize_proportion_ != 0.0) {
+    WriteToken(os, binary, "<JointL2RegularizeProportion>");
+    WriteBasicType(os, binary, joint_l2_regularize_proportion_);
+  }
   WriteToken(os, binary, "<UseNaturalGradient>");
   WriteBasicType(os, binary, use_natural_gradient_);
   int32 rank_in = preconditioner_in_.GetRank(),
@@ -413,6 +432,12 @@ void TdnnComponent::Read(std::istream &is, bool binary) {
   bias_params_.Read(is, binary);
   ExpectToken(is, binary, "<OrthonormalConstraint>");
   ReadBasicType(is, binary, &orthonormal_constraint_);
+  if (PeekToken(is, binary) == 'J') {
+    ExpectToken(is, binary, "<JointL2RegularizeProportion>");
+    ReadBasicType(is, binary, &joint_l2_regularize_proportion_);
+  } else {
+    joint_l2_regularize_proportion_ = 0.0;
+  }
   ExpectToken(is, binary, "<UseNaturalGradient>");
   ReadBasicType(is, binary, &use_natural_gradient_);
   int32 rank_in,  rank_out;
@@ -681,6 +706,152 @@ void TdnnComponent::PrecomputedIndexes::Read(
   ReadIntegerVector(is, binary, &row_offsets);
   ExpectToken(is, binary, "</TdnnComponentPrecomputedIndexes>");
 }
+
+
+// This utility function is used to propagate the derivatives of the squared l2
+// norm of the matrix product:
+//     -l2_regularize_factor * ||A B||_2^2
+// back to A and B themselves.  It adds the derivative of this quantitity
+// w.r.t. A and B respectively, to "A_deriv" and "B_deriv".
+//
+// The thing we're taking the derivative of can be written as:
+//   -l2_regularize_factor * tr( A B (A B)^T )
+// = -l2_regularize_factor * tr( A B B^T A^T )
+// = -l2_regularize_factor * tr( A^T A B B^T )
+// If we're using a convention where the derivative of a matrix
+// w.r.t. A is always of the same dimension as A (i.e. not its transpose),
+// then the derivative of this w.r.t. A is:
+//  df/dA =  -2.0 * l2_regularize_factor *  A B B^T
+// and the derivative w.r.t. B is:
+//  df/dB =  -2.0 * l2_regularize_factor *  A^T A B
+// This function adds those two derivatives to 'A_deriv' and 'B_deriv'
+// respectively.
+// Just for background: if we were doing regular L2 regularization on A and B
+// (i.e. not on their product), the expressions for the derivatives above would
+// be the same except with the symmetric factors (A^T A) and (B B^T) taken out.
+static void ApplyProductL2Regularization(
+    BaseFloat l2_regularize_factor,
+    const CuMatrixBase<BaseFloat> &A,
+    const CuMatrixBase<BaseFloat> &B,
+    CuMatrixBase<BaseFloat> *A_deriv,
+    CuMatrixBase<BaseFloat> *B_deriv) {
+
+
+  int32 bottleneck_dim = B.NumRows();  // and A.NumCols().
+  // BBT is B B^T.
+  CuMatrix<BaseFloat> BBT(bottleneck_dim, bottleneck_dim);
+
+
+  { // The following block adds the derivative w.r.t. A to A_deriv.
+    // the following two commands should be equivalent to (but hopefully
+    // slightly faster than):
+    //  BBT.SymAddMat2(1.0, B, kNoTrans, B, kTrans, 0.0);
+    BBT.SymAddMat2(1.0, B, kNoTrans, 0.0);
+    BBT.CopyLowerToUpper();
+    // note: in the next statement it doesn't matter whether we give BBT
+    // transposed or not: in principle we could tune that for speed.
+    A_deriv->AddMatMat(-2.0 * l2_regularize_factor, A, kNoTrans, BBT, kNoTrans, 1.0);
+  }
+  { // The following block adds the derivative w.r.t. B to B_deriv.  ATA is A^T
+    // A.  We re-use the no-longer-needed matrix BBT for storage.
+    CuMatrix<BaseFloat> &ATA(BBT);
+    // the following two commands should be equivalent to (but hopefully
+    // slightly faster than):
+    //  ATA.SymAddMat2(1.0, A, kTrans, A, kNoTrans, 0.0);
+    ATA.SymAddMat2(1.0, A, kTrans, 0.0);
+    ATA.CopyLowerToUpper();
+    // note: in the next statement it doesn't matter whether we give ATA
+    // transposed or not: in principle we could tune that for speed.
+    B_deriv->AddMatMat(-2.0 * l2_regularize_factor, ATA, kNoTrans, B, kNoTrans, 1.0);
+  }
+}
+
+void TdnnComponent::ApplyBottleneckL2Regularization(
+    BaseFloat l2_regularize_factor,
+    const TdnnComponent &next_component,
+    TdnnComponent *this_delta_component,
+    TdnnComponent *next_delta_component) const {
+  KALDI_ASSERT(bias_params_.Dim() == 0 &&
+               SameDim(linear_params_, this_delta_component->linear_params_) &&
+               SameDim(next_component.linear_params_,
+                       next_delta_component->linear_params_) &&
+               orthonormal_constraint_ == 0.0 &&
+               next_component.orthonormal_constraint_ == 0.0 &&
+               l2_regularize_ != 0.0 && next_component.l2_regularize_ != 0.0 &&
+               l2_regularize_ == next_component.l2_regularize_ &&
+               OutputDim() == next_component.InputDim());
+
+  // The num-rows of this_params is OutputDim() == next_component.InputDim().
+  // This will become B in ApplyProductL2Regularization(); it's on the right
+  // because it's applied to the parameters first.
+  const CuMatrix<BaseFloat> &this_params(linear_params_);
+  CuMatrix<BaseFloat> *this_deriv(&(this_delta_component->linear_params_));
+
+  // we don't need to interrogate this->l2_regularize_ or this->learning_rate_
+  // because they have already been made factors of 'l2_regularize_factor'.
+  if (next_component.linear_params_.NumCols() == next_component.InputDim()) {
+    // If the next component has no splicing over time, then we don't need
+    // to reorganize its parameter matrix's blocks.
+    const CuMatrix<BaseFloat> &next_params(next_component.linear_params_);
+    CuMatrix<BaseFloat> *next_deriv(&(next_delta_component->linear_params_));
+    ApplyProductL2Regularization(l2_regularize_factor, next_params, this_params,
+                                 next_deriv, this_deriv);
+  } else {
+    // The next component has splicing over time.  Its linear_params_ matrix
+    // would have num-cols equal to the bottleneck-dim times the number of
+    // spliced frames it accepts.  In order to view the sequence of two
+    // components as a matrix multiplication we have to make that parameter
+    // matrix's num-cols equal to the bottleneck-dim, and increase num-rows by a
+    // factor equal to the amount of splicing.  The product matrix would now
+    // have a possibly strange interpretation, with blocks that could be indexed
+    // by the time-offsets on the two components.
+    int32 input_dim = next_component.InputDim(),
+        output_dim = next_component.OutputDim(),
+        num_offsets =  next_component.linear_params_.NumCols() / input_dim;
+    // We'll use two blocks of the following for the parameters and (derivative
+    // w.r.t. parameters) of the next component.  We could find a way to do it
+    // in-place but this is clearer; we'll reorganize it if the speed of this
+    // seems to be a problem
+    CuMatrix<BaseFloat> storage(2 * num_offsets * output_dim,
+                                input_dim, kUndefined);
+    CuSubMatrix<BaseFloat> next_component_params =
+        storage.RowRange(0, num_offsets * output_dim);
+    CuSubMatrix<BaseFloat> next_component_deriv =
+        storage.RowRange(num_offsets * output_dim,
+                         num_offsets * output_dim);
+    // Copy the blocks of the parameters to temporary storage (rearranging
+    // blocks).
+    for (int32 o = 0; o < num_offsets; o++) {
+      CuSubMatrix<BaseFloat> params_block_dest(next_component_params,
+                                               o * output_dim, output_dim,
+                                               0, input_dim),
+          params_block_src(next_component.linear_params_,
+                           0, output_dim, o * input_dim, input_dim);
+      params_block_dest.CopyFromMat(params_block_src);
+    }
+    next_component_deriv.SetZero();
+    ApplyProductL2Regularization(l2_regularize_factor,
+                                 next_component_params, this_params,
+                                 &next_component_deriv, this_deriv);
+    // Add the blocks of the parameter derivatives to
+    // next_delta_component->linear_params_.
+    for (int32 o = 0; o < num_offsets; o++) {
+      CuSubMatrix<BaseFloat> deriv_block_src(next_component_deriv,
+                                             o * output_dim, output_dim,
+                                             0, input_dim),
+          deriv_block_dest(next_delta_component->linear_params_,
+                           0, output_dim, o * input_dim, input_dim);
+      deriv_block_dest.AddMat(1.0, deriv_block_src);
+    }
+  }
+
+  // Appply l2 on the bias parameters.
+  if (next_delta_component->bias_params_.Dim() != 0) {
+    next_delta_component->bias_params_.AddVec(-2.0 * l2_regularize_factor,
+                                              next_component.bias_params_);
+  }
+}
+
 
 
 } // namespace nnet3

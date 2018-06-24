@@ -48,7 +48,7 @@ namespace nnet3 {
 
    Parameters inherited from UpdatableComponent (see comment above declaration of
    UpdadableComponent in nnet-component-itf.h for details):
-       learning-rate, learning-rate-factor, max-change
+       learning-rate, learning-rate-factor, max-change, l2-regularize
 
    Convolution-related parameters:
 
@@ -381,7 +381,7 @@ class TimeHeightConvolutionComponent: public UpdatableComponent {
 
    Parameters inherited from UpdatableComponent (see comment above declaration of
    UpdadableComponent in nnet-component-itf.h for details):
-       learning-rate, learning-rate-factor, max-change
+       learning-rate, learning-rate-factor, max-change, l2-regularize.
 
    Important parameters:
 
@@ -414,7 +414,18 @@ class TimeHeightConvolutionComponent: public UpdatableComponent {
                       will constrain the parameter matrix to be closer to "any
                       alpha" times a semi-orthogonal matrix, without changing
                       its overall norm.
-
+      joint-l2-regularize-proportion  If left at its default value of 0.0,
+                      l2 regularization will be done the same way as for any
+                      other component, controlled by the "l2-regularize"
+                      parameter.  You may set this to a nonzero value only for
+                      the second (closer to the output) of a pair of consecutive
+                      TdnnComponents in a TDNN-F layer.  If set to 1.0, instead
+                      of the l2 being done on the parameter matrices directly it
+                      is done on their product (with some rearrangement; see the
+                      implementation of the function
+                      ApplyBottleneckL2Regularization() for details).  You can
+                      set it to a value intermediate between 0.0 and 1.0 to
+                      interpolate between regular and "product" regularization.
 
    Initialization parameters:
       param-stddev    Standard deviation of the linear parameters of the
@@ -554,8 +565,51 @@ class TdnnComponent: public UpdatableComponent {
   // This allows you to resize the vector in order to add a bias where
   // there previously was none-- obviously this should be done carefully.
   CuVector<BaseFloat> &BiasParams() { return bias_params_; }
+  const CuVector<BaseFloat> &BiasParams() const { return bias_params_; }
 
   BaseFloat OrthonormalConstraint() const { return orthonormal_constraint_; }
+
+  BaseFloat JointL2RegularizeProportion() const {
+    return joint_l2_regularize_proportion_;
+  }
+
+  // This function is used in applying L2 regularization in TDNN-F
+  // architectures.  It's an alternative to the "orthonormal constraint" that,
+  // in early versions of the idea, we applied to one of the two components.
+  // This function is called from nnet-utils.cc; it's automatically called when
+  // you call the ApplyL2Regularization() function.  Essentially, instead of
+  // l2-regularizing the two parameter matrices individually, we do it on their
+  // product.  That avoids a phenomenon where certain directions in the
+  // bottleneck subspace approach zero variance and are "lost", and keeps the
+  // singular values of the product matrix in a narrower range than they would
+  // otherwise be.
+  //
+  // Explanation of the arguments:
+
+  //   l2_regularize_factor is the product of: the number of chunks in the
+  //   minibatch, times the user-specified value l2_regularize_scale which is
+  //   normally 1.0, times the L2Regularize() value of this component, times the
+  //   component's learning rate.  See documentation for ApplyL2Regularization()
+  //   in nnet-utils.h for more information on l2_regularize_scale.
+  //
+  //   *this and next_component are the first and second TdnnComponents
+  //   in the TDNN-F layer: between them is a linear bottleneck (i.e.
+  //   there are no other components).
+  //   *this_delta_component and *next_delta_component are copies of *this and
+  //   next_component respectively, to which this function will add the
+  //   derivative of the l2 term, multiplied by l2_regularize_scale.
+  //
+  //   For reference, if we were applying "normal" l2 regularization on *this,
+  //   we'd just be doing:
+  //       this_delta_component->Add(-2.0 * l2_regularize_factor, *this);
+  //       next_delta_component->Add(-2.0 * l2_regularize_factor,
+  //                                 next_component));
+  void ApplyBottleneckL2Regularization(
+      BaseFloat l2_regularize_factor,
+      const TdnnComponent &next_component,
+      TdnnComponent *this_delta_component,
+      TdnnComponent *next_delta_component) const;
+
  private:
 
   // This static function is a utility function that extracts a CuSubMatrix
@@ -607,6 +661,10 @@ class TdnnComponent: public UpdatableComponent {
   // This class just returns the value via the OrthonormalConstraint() function;
   // it doesn't actually do anything with it directly.
   BaseFloat orthonormal_constraint_;
+
+  // See documentation at class level; search above for
+  // 'joint-l2-regularize-proportion'.
+  BaseFloat joint_l2_regularize_proportion_;
 
   // Controls whether or not the natural-gradient is used.  Note: even if this
   // is true, if is_gradient_ (from the UpdatableComponent base class) is true,

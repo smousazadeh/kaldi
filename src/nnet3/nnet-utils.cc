@@ -2129,12 +2129,228 @@ int32 GetNumNvalues(const std::vector<NnetIo> &io_vec,
   return num_n_values;
 }
 
+
+// This function will check whether a Descriptor is simple, meaning (in this
+// context) that it's just the name of a node, e.g. "tdnnf2.scale", and if it
+// is simple then it will return the node-index of that node; otherwise it
+// will return -1.
+static int32 GetDescriptorInputNode(const Descriptor &descriptor) {
+  if (descriptor.NumParts() != 1)
+    return -1;
+  const SumDescriptor &sum_desc = descriptor.Part(0);
+  // I don't much like having to use dynamic_cast here but it does work.
+  const SimpleSumDescriptor *ss = dynamic_cast<const SimpleSumDescriptor*>(
+      &sum_desc);
+  if (ss == NULL) return -1;
+  const ForwardingDescriptor *fd = &(ss->Src());
+  const SimpleForwardingDescriptor *sd =
+      dynamic_cast<const SimpleForwardingDescriptor*>(fd);
+  if (sd == NULL) return -1;
+  // the following is a rather roundabout way to get the node-index from a
+  // SimpleForwardingDescriptor, but it works (it avoids adding other stuff
+  // to the interface).
+  std::vector<int32> v;
+  sd->GetNodeDependencies(&v);
+  int32 node_index = v[0];
+  return node_index;
+}
+
+
+/**
+   This function, used in ApplyTdnnfL2Regularization(), figures out whether
+   node-index n in the neural net 'nnet' is the component-node for the
+   second of a sequence of two components of type TdnnfComponent, which
+   form a TDNNF bottleneck that we need to apply regularization to.
+
+   Specifically: if n is the component-node index of a node that owns a
+   component 'tdnn2' of type TdnnComponent, where tdnn2 has nonzero values of
+   l2-regularize, learning-rate and joint-l2-regularize-proportion,
+   then it assumed that 'tdnn2' is supposed to be the second (closer-to-output)
+   component of such a bottleneck.  In that case, we require (or it is an
+   error) that at the input of this node is another node that
+   owns a component of type TdnnComponent (call this 'tdnn1').  This function
+   will then return 'true' and output the component-indexes c1 and c2 for nodes
+   tdnn1 and tdnn2 respectively.  It does not check for further properties of
+   the components (such as the orthonormal constraint); the calling code does
+   that.
+
+   If n is not the component-index of a node satisfying the properties mentioned
+   above (type TdnnComponent; l2-regularize, learning-rate and
+   joint-l2-regularize-proportion all nonzero), then this function returns false
+   and does not change *c1 and *c2.
+*/
+static bool IsTdnnfBottleneckPair(const Nnet &nnet, int32 n, int32 *c1, int32 *c2) {
+  const TdnnComponent *tdnn1, *tdnn2;
+
+  const NetworkNode &tdnn_node2 = nnet.GetNode(n);
+
+  if (tdnn_node2.node_type != kComponent)
+    return false;
+  tdnn2 = dynamic_cast<const TdnnComponent*>(
+      nnet.GetComponent(tdnn_node2.u.component_index));
+  if (tdnn2 == NULL || tdnn2->JointL2RegularizeProportion() == 0.0 ||
+      tdnn2->LearningRate() == 0.0 || tdnn2->L2Regularization() == 0.0)
+    return false;
+  const NetworkNode &tdnn_node2_input = nnet.GetNode(n-1);
+  int32 tdnn1_node_index = GetDescriptorInputNode(tdnn_node2_input.descriptor);
+  if (tdnn1_node_index == -1)
+    return false;
+
+  const NetworkNode &tdnn_node1 = nnet.GetNode(tdnn1_node_index);
+  if (tdnn_node1.node_type != kComponent)
+    goto input_not_tdnn;
+  tdnn1 = dynamic_cast<const TdnnComponent*>(
+      nnet.GetComponent(tdnn_node1.u.component_index));
+  if (tdnn1 == NULL)
+    goto input_not_tdnn;
+
+  *c1 = tdnn_node1.u.component_index;
+  *c2 = tdnn_node2.u.component_index;
+  return true;
+
+input_not_tdnn:
+  KALDI_ERR << "TDNN component has joint-l2-regularize-proportion set but its "
+      "input is not a TDNN component.";
+  return false;
+}
+
+
+/**
+   This function, which is not exposed to the user but which is called from
+   ApplyL2Regularization, handles certain "special cases" of how we apply l2
+   regularization, that occur in TDNNF bottlenecks.  When we detect a component
+   of type TdnnComponent that has nonzero values of learning-rate, l2-regularize
+   and joint-l2-regularize-proportion, then we expect its input to be another
+   component of type TdnnComponent (and that both of them together form the
+   factored matrix of TDNN-F).  In this case we do the l2 regularization in a
+   special way.  Basically, we apply the l2 regularization to the product of the
+   two parameter matrices (after rearranging the blocks of the second one to
+   make this possible), instead of on the two matrices individually.  This
+   will prevent certain directions in the bottleneck space getting variance that
+   shrinks towards zero.
+
+     @param [in] nnet  The neural net whose parameters we are regularizing
+     @param [in] l2_regularize_scale  This is a scaling factor that affects
+                the strength of l2 (it will be multiplied by the component-level
+                l2-regularize values and the learning rates).  See documentation
+                for AppplyL2Regularization() in nnet-utils.h for more
+                information.
+     @param [in,out] delta_nnet  Neural net that contains the change we'll make on
+                this minibatch (later on it will be subject to max-change
+                constraints).  This function adds to the parameters of
+                delta_nnet.
+     @param [out] components_handled.   All component indexes for components
+               (of type TdnnComponent) that this function did the l2 for,
+               are inserted into this unordered_set.  It is then used by
+               the calling code so that it can avoid doing the normal l2 on
+               those components.
+ */
+static void ApplyTdnnfL2Regularization(
+    const Nnet &nnet, BaseFloat l2_regularize_scale,
+    Nnet *delta_nnet,
+    std::unordered_set<int32> *components_handled) {
+
+  // 'pairs_to_handle' will contain pairs of component nodes (c1,c2) which we
+  // are going to try to process using this mechanism.  We make it a set instead
+  // of a vector to avoid duplicates (which is unlikely to be an issue in
+  // practice because we don't normally let nodes share components, but it could
+  // happen in principle).
+  std::set<std::pair<int32, int32> > pairs_to_handle;
+  for (int32 n = 0; n < nnet.NumNodes(); n++) {
+    int32 c1, c2;
+    if (IsTdnnfBottleneckPair(nnet, n, &c1, &c2)) {
+      pairs_to_handle.insert(std::pair<int32, int32>(c1, c2));
+    }
+  }
+  for (auto iter = pairs_to_handle.begin();
+       iter != pairs_to_handle.end(); ++iter) {
+    int32 c1 = iter->first, c2 = iter->second;
+    if (!components_handled->insert(c1).second ||
+        !components_handled->insert(c2).second) {
+      // either c1 or c2 was already in the set 'components_handled', so could
+      // not be inserted again.
+      KALDI_ERR << "Error applying joint l2 regularization: a component "
+          "is in more than one pair.  The code does not currently support "
+          "whatever topology you are using.";
+    }
+    const TdnnComponent
+        *tdnn1 = dynamic_cast<const TdnnComponent*>(nnet.GetComponent(c1)),
+        *tdnn2 = dynamic_cast<const TdnnComponent*>(nnet.GetComponent(c2));
+    // If tdnn1 or tdnn2 were NULL the following would segfault; this would
+    // imply a code error.
+    if (tdnn1->OrthonormalConstraint() != 0.0 ||
+        tdnn2->OrthonormalConstraint() != 0.0 ||
+        tdnn1->L2Regularization() != tdnn2->L2Regularization() ||
+        tdnn1->L2Regularization() == 0 ||
+        tdnn1->LearningRate() != tdnn2->LearningRate() ||
+        tdnn1->LearningRate() == 0 ||
+        tdnn1->BiasParams().Dim() != 0) {
+      // Something about the pair of components is not what this code expects and
+      // can deal with.  This is an error because the user requested joint
+      // l2 regularization by setting joint-l2-regularize-proportion on the
+      // second of hte two components.
+      KALDI_ERR << "Something about these two components is not right for "
+                << "joint l2 regularization.  Configuration: tdnn1 = "
+                << tdnn1->Info() << ", tdnn2 = " << tdnn2->Info();
+    }
+    TdnnComponent
+        *tdnn1_delta = dynamic_cast<TdnnComponent*>(delta_nnet->GetComponent(c1)),
+        *tdnn2_delta = dynamic_cast<TdnnComponent*>(delta_nnet->GetComponent(c2));
+
+    BaseFloat l2_regularize_factor =
+        l2_regularize_scale * tdnn1->L2Regularization() * tdnn1->LearningRate(),
+        joint_l2_regularize_proportion = tdnn2->JointL2RegularizeProportion();
+    KALDI_ASSERT(l2_regularize_factor > 0.0 &&
+                 joint_l2_regularize_proportion > 0.0 &&
+                 joint_l2_regularize_proportion <= 1.0);
+    // note: joint_l2_regularize_proportion will likely be 1 but you
+    // can assign values between 0 and 1 to interpolate with regular l2.
+
+
+
+    if (Rand() < joint_l2_regularize_proportion) {
+      // With probability joint_l2_regularize_proportion, do the l2
+      // regularization on the product of the matrices.
+
+      // The 0.25 value of bottleneck_regularize_prob below means that on
+      // average we'll do the bottleneck l2 regularization every 4 frames (with
+      // a scale of 4 so that the expected amount of l2 is the same).  This is
+      // for efficiency, since it's a not-completely-trivial operation (there
+      // are some matrix multiplies involved).  Since the part of the parameter
+      // change from the l2 is a small quantity and we normally do hundreds of
+      // minibatches per training job, it will average out fine over time.
+      BaseFloat bottleneck_regularize_prob = 0.25;
+      if (Rand() < bottleneck_regularize_prob) {
+        tdnn1->ApplyBottleneckL2Regularization(
+            l2_regularize_factor / bottleneck_regularize_prob,
+          *tdnn2, tdnn1_delta, tdnn2_delta);
+      }
+    } else {
+      // Do regular l2 regularization this time.  (Note: we don't necessarily
+      // expect that people will set joint-l2-regularize-proportion to values
+      // other than zero or one, but the choice is available).
+      tdnn1_delta->Add(-2.0 * l2_regularize_factor, *tdnn1);
+      tdnn2_delta->Add(-2.0 * l2_regularize_factor, *tdnn2);
+    }
+  }
+}
+
 void ApplyL2Regularization(const Nnet &nnet,
                            BaseFloat l2_regularize_scale,
                            Nnet *delta_nnet) {
   if (l2_regularize_scale == 0.0)
     return;
+
+  std::unordered_set<int32> components_handled;
+  // The following will only do something nontrivial for TDNN-F topologies with
+  // TdnnComponents which have the joint-l2-regularize-proportion set to a
+  // nonzero value.
+  ApplyTdnnfL2Regularization(nnet, l2_regularize_scale, delta_nnet,
+                             &components_handled);
+
   for (int32 c = 0; c < nnet.NumComponents(); c++) {
+    if (components_handled.count(c) != 0)
+      continue;
     const Component *src_component_in = nnet.GetComponent(c);
     if (src_component_in->Properties() & kUpdatableComponent) {
       const UpdatableComponent *src_component =

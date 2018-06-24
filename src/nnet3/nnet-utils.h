@@ -412,6 +412,15 @@ bool UpdateNnetWithMaxChange(const Nnet &delta_nnet,
     sufficiently smoothed with the identity, that I doubt this makes much of a
     difference.
 
+    This function treats TDNNF bottlenecks 'specially': if it detects a sequence
+    of two components of type TdnnComponent, neither of which have the
+    orthonormal constraint set, and where both have the same l2-regularize value
+    set on the component, instead of applying the l2 on the individual parameter
+    matrices it will apply it to their product.  (This is after reorganizing the
+    blocks of the matrix to make this possible).  See the implementation for
+    more details.
+
+
     @param [in] nnet  The neural net that is being trained; expected
                       to be different from delta_nnet
     @param [in] l2_regularize_scale   A scale on the l2 regularization.
