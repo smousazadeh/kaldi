@@ -2182,30 +2182,31 @@ static int32 GetDescriptorInputNode(const Descriptor &descriptor) {
 static bool IsTdnnfBottleneckPair(const Nnet &nnet, int32 n, int32 *c1, int32 *c2) {
   const TdnnComponent *tdnn1, *tdnn2;
 
-  const NetworkNode &tdnn_node2 = nnet.GetNode(n);
+  const NetworkNode *tdnn_node2 = &(nnet.GetNode(n)),
+      *tdnn_node2_input, *tdnn_node1;
 
-  if (tdnn_node2.node_type != kComponent)
+  if (tdnn_node2->node_type != kComponent)
     return false;
   tdnn2 = dynamic_cast<const TdnnComponent*>(
-      nnet.GetComponent(tdnn_node2.u.component_index));
+      nnet.GetComponent(tdnn_node2->u.component_index));
   if (tdnn2 == NULL || tdnn2->JointL2RegularizeProportion() == 0.0 ||
       tdnn2->LearningRate() == 0.0 || tdnn2->L2Regularization() == 0.0)
     return false;
-  const NetworkNode &tdnn_node2_input = nnet.GetNode(n-1);
-  int32 tdnn1_node_index = GetDescriptorInputNode(tdnn_node2_input.descriptor);
+  tdnn_node2_input = &(nnet.GetNode(n-1));
+  int32 tdnn1_node_index = GetDescriptorInputNode(tdnn_node2_input->descriptor);
   if (tdnn1_node_index == -1)
-    return false;
+    goto input_not_tdnn;
 
-  const NetworkNode &tdnn_node1 = nnet.GetNode(tdnn1_node_index);
-  if (tdnn_node1.node_type != kComponent)
+  tdnn_node1 = &(nnet.GetNode(tdnn1_node_index));
+  if (tdnn_node1->node_type != kComponent)
     goto input_not_tdnn;
   tdnn1 = dynamic_cast<const TdnnComponent*>(
-      nnet.GetComponent(tdnn_node1.u.component_index));
+      nnet.GetComponent(tdnn_node1->u.component_index));
   if (tdnn1 == NULL)
     goto input_not_tdnn;
 
-  *c1 = tdnn_node1.u.component_index;
-  *c2 = tdnn_node2.u.component_index;
+  *c1 = tdnn_node1->u.component_index;
+  *c2 = tdnn_node2->u.component_index;
   return true;
 
 input_not_tdnn:
@@ -2307,8 +2308,7 @@ static void ApplyTdnnfL2Regularization(
     // can assign values between 0 and 1 to interpolate with regular l2.
 
 
-
-    if (Rand() < joint_l2_regularize_proportion) {
+    if (RandUniform() < joint_l2_regularize_proportion) {
       // With probability joint_l2_regularize_proportion, do the l2
       // regularization on the product of the matrices.
 
@@ -2320,7 +2320,7 @@ static void ApplyTdnnfL2Regularization(
       // change from the l2 is a small quantity and we normally do hundreds of
       // minibatches per training job, it will average out fine over time.
       BaseFloat bottleneck_regularize_prob = 0.25;
-      if (Rand() < bottleneck_regularize_prob) {
+      if (RandUniform() < bottleneck_regularize_prob) {
         tdnn1->ApplyBottleneckL2Regularization(
             l2_regularize_factor / bottleneck_regularize_prob,
           *tdnn2, tdnn1_delta, tdnn2_delta);
