@@ -221,6 +221,7 @@ UpdatableComponent::UpdatableComponent(const UpdatableComponent &other):
     learning_rate_(other.learning_rate_),
     learning_rate_factor_(other.learning_rate_factor_),
     l2_regularize_(other.l2_regularize_),
+    l4_regularize_(other.l4_regularize_),
     is_gradient_(other.is_gradient_),
     max_change_(other.max_change_) { }
 
@@ -230,6 +231,7 @@ void UpdatableComponent::SetUpdatableConfigs(
   learning_rate_ = other.learning_rate_;
   learning_rate_factor_ = other.learning_rate_factor_;
   l2_regularize_ = other.l2_regularize_;
+  l4_regularize_ = other.l4_regularize_;
   is_gradient_ = other.is_gradient_;
   max_change_ = other.max_change_;
 }
@@ -245,8 +247,10 @@ void UpdatableComponent::InitLearningRatesFromConfig(ConfigLine *cfl) {
   cfl->GetValue("max-change", &max_change_);
   l2_regularize_ = 0.0;
   cfl->GetValue("l2-regularize", &l2_regularize_);
+  l4_regularize_ = 0.0;
+  cfl->GetValue("l4-regularize", &l4_regularize_);
   if (learning_rate_ < 0.0 || learning_rate_factor_ < 0.0 ||
-      max_change_ < 0.0 || l2_regularize_ < 0.0)
+      max_change_ < 0.0 || l4_regularize_ < 0.0)
     KALDI_ERR << "Bad initializer " << cfl->WholeLine();
 }
 
@@ -286,6 +290,12 @@ std::string UpdatableComponent::ReadUpdatableCommon(std::istream &is,
   } else {
     l2_regularize_ = 0.0;
   }
+  if (token == "<L4Regularize>") {
+    ReadBasicType(is, binary, &l4_regularize_);
+    ReadToken(is, binary, &token);
+  } else {
+    l4_regularize_ = 0.0;
+  }
   if (token == "<LearningRate>") {
     ReadBasicType(is, binary, &learning_rate_);
     return "";
@@ -316,6 +326,10 @@ void UpdatableComponent::WriteUpdatableCommon(std::ostream &os,
     WriteToken(os, binary, "<L2Regularize>");
     WriteBasicType(os, binary, l2_regularize_);
   }
+  if (l4_regularize_ > 0.0) {
+    WriteToken(os, binary, "<L4Regularize>");
+    WriteBasicType(os, binary, l4_regularize_);
+  }
   WriteToken(os, binary, "<LearningRate>");
   WriteBasicType(os, binary, learning_rate_);
 }
@@ -330,6 +344,8 @@ std::string UpdatableComponent::Info() const {
     stream << ", is-gradient=true";
   if (l2_regularize_ != 0.0)
     stream << ", l2-regularize=" << l2_regularize_;
+  if (l4_regularize_ != 0.0)
+    stream << ", l4-regularize=" << l4_regularize_;
   if (learning_rate_factor_ != 1.0)
     stream << ", learning-rate-factor=" << learning_rate_factor_;
   if (max_change_ > 0.0)

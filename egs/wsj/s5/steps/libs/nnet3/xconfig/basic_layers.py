@@ -507,6 +507,7 @@ class XconfigOutputLayer(XconfigLayerBase):
                        'param-stddev': 0.0,
                        'bias-stddev': 0.0,
                        'l2-regularize': 0.0,
+                       'l4-regularize': 0.0,
                        'output-delay': 0,
                        'ng-affine-options': '',
                        'ng-linear-options': ''    # only affects bottleneck output layers.
@@ -597,13 +598,16 @@ class XconfigOutputLayer(XconfigLayerBase):
         param_stddev = self.config['param-stddev']
         bias_stddev = self.config['bias-stddev']
         l2_regularize = self.config['l2-regularize']
+        l4_regularize = self.config['l4-regularize']
         output_delay = self.config['output-delay']
         max_change = self.config['max-change']
         ng_affine_options = self.config['ng-affine-options']
         learning_rate_option = ('learning-rate-factor={0} '.format(learning_rate_factor) if
                                 learning_rate_factor != 1.0 else '')
-        l2_regularize_option = ('l2-regularize={0} '.format(l2_regularize)
-                                if l2_regularize != 0.0 else '')
+        regularize_option = ('l2-regularize={0} '.format(l2_regularize)
+                              if l2_regularize != 0.0 else '') + \
+                             ( 'l4-regularize={0} '.format(l4_regularize)
+                              if l4_regularize != 0.0 else '')
 
         cur_node = descriptor_final_string
         cur_dim = input_dim
@@ -643,7 +647,7 @@ class XconfigOutputLayer(XconfigLayerBase):
                 ' max-change={5} {6} {7} {8}'
                 ''.format(self.name, cur_dim, output_dim,
                           param_stddev, bias_stddev, max_change, ng_affine_options,
-                          learning_rate_option, l2_regularize_option))
+                          learning_rate_option, regularize_option))
         configs.append(line)
         line = ('component-node name={0}.affine'
                 ' component={0}.affine input={1}'
@@ -706,6 +710,9 @@ class XconfigBasicLayer(XconfigLayerBase):
       l2-regularize=0.0       [Set this to a nonzero value (e.g. 1.0e-05) to
                                add l2 regularization on the parameter norm for
                                 this component.
+      l4-regularize=0.0       [Set this to a nonzero value (e.g. 1.0e-05) to
+                               add l4 regularization on the parameter norm for
+                                this component.
     """
     def __init__(self, first_token, key_to_value, prev_names=None):
         XconfigLayerBase.__init__(self, first_token, key_to_value, prev_names)
@@ -734,6 +741,7 @@ class XconfigBasicLayer(XconfigLayerBase):
                        # code, just passed through (but not if left at '').
                        'bias-stddev': '',
                        'l2-regularize': '',
+                       'l4-regularize': '',
                        'learning-rate-factor': '',
                        'max-change': 0.75 }
 
@@ -806,7 +814,7 @@ class XconfigBasicLayer(XconfigLayerBase):
 
         affine_options = self.config['ng-affine-options']
         for opt_name in [ 'max-change', 'learning-rate-factor',
-                          'bias-stddev', 'l2-regularize' ]:
+                          'bias-stddev', 'l2-regularize', 'l4-regularize' ]:
             value = self.config[opt_name]
             if value != '':
                 affine_options += ' {0}={1}'.format(opt_name, value)
