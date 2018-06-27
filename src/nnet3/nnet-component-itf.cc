@@ -172,6 +172,8 @@ Component* Component::NewComponentOfType(const std::string &component_type) {
     ans = new LstmNonlinearityComponent();
   } else if (component_type == "BatchNormComponent") {
     ans = new BatchNormComponent();
+  } else if (component_type == "DiagonalizeComponent") {
+    ans = new DiagonalizeComponent();
   } else if (component_type == "TimeHeightConvolutionComponent") {
     ans = new TimeHeightConvolutionComponent();
   } else if (component_type == "RestrictedAttentionComponent") {

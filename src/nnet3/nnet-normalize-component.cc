@@ -675,6 +675,231 @@ void BatchNormComponent::ZeroStats() {
   }
 }
 
+void DiagonalizeComponent::Check() const {
+  KALDI_ASSERT(dim_ > 0 && block_dim_ > 0 && dim_ % block_dim_ == 0 &&
+               alpha_ > 0.0 && diagonalize_prob_ > 0.0 &&
+               diagonalize_prob_ <= 1.0);
+}
+
+DiagonalizeComponent::DiagonalizeComponent(const DiagonalizeComponent &other):
+    dim_(other.dim_), block_dim_(other.block_dim_),
+    alpha_(other.alpha_), diagonalize_prob_(other.diagonalize_prob_),
+    num_frames_history_(other.num_frames_history_),
+    count_(other.count_), data_scatter_(other.data_scatter_) {
+  Check();
+}
+
+
+std::string DiagonalizeComponent::Info() const {
+  std::ostringstream stream;
+  stream << Type() << ", dim=" << dim_ << ", block-dim=" << block_dim_
+         << ", alpha=" << alpha_ << ", diagonalize-prob="
+         << diagonalize_prob_ << ", num-frames-history="
+         << num_frames_history_ << ", count=" << count_;
+  return stream.str();
+}
+
+void DiagonalizeComponent::InitFromConfig(ConfigLine *cfl) {
+  dim_ = -1;
+  block_dim_ = -1;
+  alpha_ = 0.01;
+  diagonalize_prob_ = 0.25;
+  num_frames_history_ = 10000.0;
+  bool ok = cfl->GetValue("dim", &dim_);
+  cfl->GetValue("block-dim", &block_dim_);
+  cfl->GetValue("alpha", &alpha_);
+  cfl->GetValue("diagonalize-prob", &diagonalize_prob_);
+  cfl->GetValue("num-frames-history", &num_frames_history_);
+  if (!ok || dim_ <= 0) {
+    KALDI_ERR << "DiagonalizeComponent must have 'dim' specified, and > 0";
+  }
+  if (block_dim_ == -1)
+    block_dim_ = dim_;
+  if (!(block_dim_ > 0 && dim_ % block_dim_ == 0 &&
+        diagonalize_prob_ > 0.0 && diagonalize_prob_ <= 1.0 &&
+        num_frames_history_ > 1.0))
+    KALDI_ERR << "Invalid configuration in DiagonalizeComponent: "
+              << cfl->WholeLine();
+  if (cfl->HasUnusedValues())
+    KALDI_ERR << "Could not process these elements in initializer: "
+              << cfl->UnusedValues();
+  count_ = 0;
+  data_scatter_.Resize(block_dim_, block_dim_);
+}
+
+
+void* DiagonalizeComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
+                                      const CuMatrixBase<BaseFloat> &in,
+                                      CuMatrixBase<BaseFloat> *out) const {
+  // The forward propagation of this component is a no-op.  The following will
+  // do nothing if out and in are the same matrix.
+  out->CopyFromMat(in);
+  return NULL;
+}
+
+void DiagonalizeComponent::Backprop(
+    const std::string &debug_info,
+    const ComponentPrecomputedIndexes *indexes, //unused
+    const CuMatrixBase<BaseFloat> &in_value,  // unused
+    const CuMatrixBase<BaseFloat> &out_value,
+    const CuMatrixBase<BaseFloat> &out_deriv,
+    void *memo_in, // unused
+    Component *to_update,  // unused
+    CuMatrixBase<BaseFloat> *in_deriv) const {
+
+  KALDI_ASSERT(SameDim(out_value, out_deriv) &&
+               SameDim(out_value, *in_deriv) &&
+               (out_value.NumCols() == dim_ ||
+                out_value.NumCols() == block_dim_));
+
+  if (out_value.NumCols() != block_dim_) {
+    // if block_dim_ != dim_, we recurse; this helps keep the main code
+    // simple.
+    KALDI_ASSERT(out_value.Stride() == out_value.NumCols() &&
+                 out_deriv.Stride() == out_deriv.NumCols() &&
+                 in_deriv->Stride() == in_deriv->NumCols());
+    int32 ratio = dim_ / block_dim_,
+        orig_rows = out_value.NumRows(),
+        orig_cols = out_value.NumCols(),
+        new_rows = orig_rows * ratio, new_cols = orig_cols / ratio;
+    CuSubMatrix<BaseFloat> out_value_reshaped(out_value.Data(), new_rows,
+                                              new_cols, new_cols),
+        out_deriv_reshaped(out_deriv.Data(), new_rows, new_cols, new_cols),
+        in_deriv_reshaped(in_deriv->Data(), new_rows, new_cols, new_cols);
+    // we'll never use in_value, so pass it in unchanged.
+    Backprop(debug_info, indexes, in_value,
+             out_value_reshaped, out_deriv_reshaped,
+             memo_in, to_update, &in_deriv_reshaped);
+    return;
+  }
+  in_deriv->CopyFromMat(out_deriv);
+  if (count_ == 0)
+    return;
+  // For the first few minibatches, until we get to the requested
+  // amount of stats, do it with probability one.
+  BaseFloat diagonalize_prob = (count_ < num_frames_history_ ?
+                                1.0 : diagonalize_prob_);
+  if (RandUniform() > diagonalize_prob)
+    return;
+  // i.e. if RandUniform() <= diagonalize_prob ("with probability
+  // diagonalize_prob") continue to actually do something.
+
+  BaseFloat scale = -alpha_ / (count_ * diagonalize_prob);
+
+  // In the expression below, the transpose-ness of data_scatter_ can be either
+  // way; we could optimize it for efficiency.  Note: data_scatter_ always
+  // has its diagonal zeroed.
+  in_deriv->AddMatMat(scale, out_value, kNoTrans, data_scatter_, kTrans, 1.0);
+}
+
+void DiagonalizeComponent::StoreStats(
+    const CuMatrixBase<BaseFloat> &in_value,
+    const CuMatrixBase<BaseFloat> &out_value,
+    void *memo_in) {
+  KALDI_ASSERT(out_value.NumCols() == dim_ || out_value.NumCols() == block_dim_);
+  if (out_value.NumCols() != block_dim_) {
+    // if block_dim_ != dim_, we recurse; this helps keep the main code
+    // simple.
+    KALDI_ASSERT(out_value.Stride() == out_value.NumCols());
+    int32 ratio = dim_ / block_dim_,
+        orig_rows = out_value.NumRows(),
+        orig_cols = out_value.NumCols(),
+        new_rows = orig_rows * ratio, new_cols = orig_cols / ratio;
+    CuSubMatrix<BaseFloat> out_value_reshaped(out_value.Data(), new_rows,
+                                              new_cols, new_cols);
+    // we'll never use in_value, so just pass it in unchanged.
+    StoreStats(in_value, out_value_reshaped, memo_in);
+    return;
+  }
+
+  // For the first few minibatches, until we get to the requested
+  // amount of stats, do it with probability one.
+  BaseFloat store_stats_prob = (count_ < num_frames_history_ ?
+                                1.0 : diagonalize_prob_);
+  if (RandUniform() > store_stats_prob)
+    return;
+  // i.e. if RandUniform() <= store_stats_prob ("with probability
+  // store_stats_prob") continue to actually do something.
+
+  int32 num_rows = out_value.NumRows();
+  count_ += num_rows;
+  data_scatter_.SymAddMat2(1.0, out_value, kTrans, 1.0);
+  data_scatter_.CopyLowerToUpper();
+
+  // The following is a trick to set the diagonal of data_scatter_ to zero
+  // without using a loop.
+  CuSubMatrix<BaseFloat> data_scatter_diagonal(
+      data_scatter_.Data(),
+      data_scatter_.NumRows(), // num-rows of data_scatter_diagonal
+      1, // num-cols of data_scatter_diagonal
+      data_scatter_.Stride() + 1); // stride of data_scatter_diagonal.
+  data_scatter_diagonal.SetZero();
+
+  if (count_ > num_frames_history_) {
+    data_scatter_.Scale(num_frames_history_ / count_);
+    count_ = num_frames_history_;
+  }
+}
+
+void DiagonalizeComponent::Read(std::istream &is, bool binary) {
+  ExpectOneOrTwoTokens(is, binary, "<DiagonalizeComponent>", "<Dim>");
+  ReadBasicType(is, binary, &dim_);
+  ExpectToken(is, binary, "<BlockDim>");
+  ReadBasicType(is, binary, &block_dim_);
+  ExpectToken(is, binary, "<Alpha>");
+  ReadBasicType(is, binary, &alpha_);
+  ExpectToken(is, binary, "<DiagonalizeProb>");
+  ReadBasicType(is, binary, &diagonalize_prob_);
+  ExpectToken(is, binary, "<NumFramesHistory>");
+  ReadBasicType(is, binary, &num_frames_history_);
+  ExpectToken(is, binary, "</DiagonalizeComponent>");
+  count_ = 0.0;
+  data_scatter_.Resize(block_dim_, block_dim_);
+  Check();
+}
+
+void DiagonalizeComponent::Write(std::ostream &os, bool binary) const {
+  Check();
+  WriteToken(os, binary, "<DiagonalizeComponent>");
+  WriteToken(os, binary, "<Dim>");
+  WriteBasicType(os, binary, dim_);
+  WriteToken(os, binary, "<BlockDim>");
+  WriteBasicType(os, binary, block_dim_);
+  WriteToken(os, binary, "<Alpha>");
+  WriteBasicType(os, binary, alpha_);
+  WriteToken(os, binary, "<DiagonalizeProb>");
+  WriteBasicType(os, binary, diagonalize_prob_);
+  WriteToken(os, binary, "<NumFramesHistory>");
+  WriteBasicType(os, binary, num_frames_history_);
+  WriteToken(os, binary, "</DiagonalizeComponent>");
+}
+
+void DiagonalizeComponent::Scale(BaseFloat scale) {
+  if (scale == 0) {
+    count_ = 0.0;
+    data_scatter_.SetZero();
+  } else {
+    count_ *= scale;
+    data_scatter_.Scale(scale);
+  }
+}
+
+
+void DiagonalizeComponent::Add(BaseFloat alpha, const Component &other_in) {
+  const DiagonalizeComponent *other =
+      dynamic_cast<const DiagonalizeComponent*>(&other_in);
+  count_ += alpha * other->count_;
+  if (data_scatter_.NumRows() == 0)
+    data_scatter_.Resize(block_dim_, block_dim_);
+  if (other->count_ != 0.0)
+    data_scatter_.AddMat(alpha, other->data_scatter_);
+}
+
+void DiagonalizeComponent::ZeroStats() {
+  count_ = 0.0;
+  data_scatter_.SetZero();
+}
+
 
 } // namespace nnet3
 } // namespace kaldi

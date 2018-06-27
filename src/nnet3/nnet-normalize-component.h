@@ -295,6 +295,157 @@ class BatchNormComponent: public Component {
 };
 
 
+/*
+  DiagonalizeComponent
+
+  This component is a no-op in the forward pass (it just copies its input); in
+  the backward pass, it adds a term to the backpropagated derivatives that will
+  tend to ensure that different dimensions of the input are not correlated
+  with each other.  It does this by storing statistics (during each training
+  run; there aren't written with the model to disk) on the covariance of
+  the input.  In the backprop it uses this covariance to add a term to the
+  derivatives that will push the input features in a direction that makes
+  them less correlated.
+
+  This implements batch normalization; for each dimension of the
+  input it normalizes the data to be zero-mean, unit-variance.  You
+  can set the block-dim configuration value to implement spatial
+  batch normalization, see the comment for the variable.
+
+  If you want to combine this with the trainable offset and scale that the
+  original BatchNorm paper used, then follow this by the
+  ScaleAndOffsetComponent.
+
+  It's a simple component (uses the kSimpleComponent flag), but it is unusual in
+  that it will give different results if you call it on half the matrix at a
+  time.  Most of the time this would be pretty harmless, so we still return the
+  kSimpleComponent flag.  We may have to modify the test code a little to
+  account for this, or possibly remove the kSimpleComponent flag.  In some sense
+  each output Index depends on every input Index, but putting those dependencies
+  explicitly into the dependency-tracking framework as a GeneralComponent
+  would be very impractical and might lead to a lot of unnecessary things being
+  computed.  You have to be a bit careful where you put this component, and understand
+  what you're doing e.g. putting it in the path of a recurrence is a bit problematic
+  if the minibatch size is small.
+
+    Accepted configuration values:
+           dim          Dimension of the input and output
+           block-dim    Defaults to 'dim', but may be set to a divisor
+                        of 'dim'.  In this case, each block of dimension 'block-dim'
+                        is treated like a separate row of the input matrix, which
+                        means that the stats from n'th element of each
+                        block are pooled into one class, for each n.
+
+           alpha=0.01   Constant that determines the magnitude of the terms which
+                        we add to the input derivatives.  Larger values will
+                        mean it more aggressively force the input to be
+                        uncorrelated.
+           diagonalize-prob=0.25  This constant, which should be >0 and <=1,
+                        determines with what probability we accumulate statistics
+                        and add something to the backpropagated derivatives,
+                        after the first few minibatches of each training run
+                        (we always do those).  It's a mechanism for efficiency.
+                        We multiply the extra backprop term by the inverse of
+                        this, so the expected backpropagated derivative is
+                        unaffected by this mechanism.
+           num-frames-history=10000   Constant that determines how rapidly the
+                        statistics of the input data's covariance decays; it's
+                        a time constant measured in frames (more precisely:
+                        rows of the input matrix, or parts of rows if block-dim
+                        is set).
+ */
+class DiagonalizeComponent: public Component {
+ public:
+  DiagonalizeComponent() { }
+
+  // constructor using another component
+  DiagonalizeComponent(const DiagonalizeComponent &other);
+
+  virtual int32 InputDim() const { return dim_; }
+  virtual int32 OutputDim() const { return dim_; }
+
+  virtual std::string Info() const;
+  virtual void InitFromConfig(ConfigLine *cfl);
+  virtual std::string Type() const { return "DiagonalizeComponent"; }
+  virtual int32 Properties() const {
+    // If the block-dim is less than the dim, we need the input and output
+    // matrices to be contiguous (stride == num-cols), as we'll be reshaping
+    // internally.
+    // The input and output are the same, but we make the backprop require the
+    // output, not the input, so that in-place backprop can be done and the
+    // input can be discarded.
+    return kSimpleComponent|kBackpropNeedsOutput|kPropagateInPlace|
+        kStoresStats|kBackpropInPlace|
+        (block_dim_ < dim_ ? kInputContiguous|kOutputContiguous : 0);
+  }
+
+  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                         const CuMatrixBase<BaseFloat> &in,
+                         CuMatrixBase<BaseFloat> *out) const;
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &in_value,
+                        const CuMatrixBase<BaseFloat> &out_value,
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        void *memo,
+                        Component *, // to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+
+  virtual void Read(std::istream &is, bool binary); // This Read function
+  // requires that the Component has the correct type.
+
+  /// Write component to stream
+  virtual void Write(std::ostream &os, bool binary) const;
+  virtual Component* Copy() const { return new DiagonalizeComponent(*this); }
+
+  virtual void Scale(BaseFloat scale);
+  virtual void Add(BaseFloat alpha, const Component &other);
+  virtual void ZeroStats();
+
+  virtual void StoreStats(const CuMatrixBase<BaseFloat> &in_value,
+                          const CuMatrixBase<BaseFloat> &out_value,
+                          void *memo);
+
+ private:
+  void Check() const;
+
+  // input/output feature dimension
+  int32 dim_;
+  // block_dim_ will normally equal dim_, but may be any nonzero divisor of
+  // dim_; if smaller than dim_, blocks of the input rows will be treated as if
+  // they were separate input rows.
+  int32 block_dim_;
+  // alpha_ determines the magnitude of the terms we add to the input derivatives.
+  BaseFloat alpha_;
+  // an efficiency mechanism: we only do something nontrivial (in forward and backward
+  // passes), with this probability.
+  BaseFloat diagonalize_prob_;
+
+  // time constant, measured in matrix rows, that determines how fast our
+  // moving estimate of the data covariance changes.
+  BaseFloat num_frames_history_;
+
+  // The following are statistics that are stored during each training
+  // run (but not written to disk).
+
+  // count_ is the number of frames (well, weighted frames, since it's a
+  // exponentially decaying average) of data that data_scatter_ corresponds to.
+  BaseFloat count_;
+
+  // data_scatter_ is an exponentially decaying sum of the scatter -- i.e. the
+  // sum of (x x^t) of the input rows x-- but with its diagonal always set to
+  // zero.  Its dimension is block_dim_ by block_dim_, and it is symmetric.
+  // Although it is not double precision (assuming BaseFloat == float), we are
+  // not too concerned about roundoff, because in the steady state (once
+  //
+  // the training reaches equilibrium), each off-diagonal element will have
+  // expected value zero, and the roundoff shouldn't cause a systematic bias.
+  // Before then, we're mostly concerned about the sign of the off-diagonal
+  // elements, and less concerned with their exact values.
+  CuMatrix<BaseFloat> data_scatter_;
+};
+
+
 
 } // namespace nnet3
 } // namespace kaldi
