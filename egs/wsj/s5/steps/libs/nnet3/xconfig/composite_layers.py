@@ -80,7 +80,11 @@ class XconfigTdnnfLayer(XconfigLayerBase):
                        'time-stride':1,
                        'l2-regularize':0.0,
                        'max-change': 0.75,
-                       'self-repair-scale': 1.0e-05}
+                       'self-repair-scale': 1.0e-05,
+                       'alpha-in':'', # relates to natural gradient, default in code is 4.0
+                       'alpha-out':'', # relates to natural gradient, default in code is 4.0
+                       'power':'' # relates to natural gradient, default in code is 1.0
+        }
 
     def set_derived_configs(self):
         pass
@@ -144,6 +148,10 @@ class XconfigTdnnfLayer(XconfigLayerBase):
         bypass_scale = self.config['bypass-scale']
         dropout_proportion = self.config['dropout-proportion']
         time_stride = self.config['time-stride']
+        extra_tdnn_opts = ''
+        for opt in ['alpha-in', 'alpha-out', 'power']:
+            if self.config[opt] != '':
+                extra_tdnn_opts += '{0}={1} '.format(opt, self.config[opt])
         if time_stride != 0:
             time_offsets1 = '{0},0'.format(-time_stride)
             time_offsets2 = '0,{0}'.format(time_stride)
@@ -157,18 +165,18 @@ class XconfigTdnnfLayer(XconfigLayerBase):
         # The first linear layer, from input-dim (spliced x2) to bottleneck-dim
         configs.append('component name={0}.linear type=TdnnComponent input-dim={1} '
                        'output-dim={2} l2-regularize={3} max-change={4} use-bias=false '
-                       'time-offsets={5} orthonormal-constraint=-1.0'.format(
+                       'time-offsets={5} orthonormal-constraint=-1.0 {6}'.format(
                            name, input_dim, bottleneck_dim, l2_regularize,
-                           max_change, time_offsets1))
+                           max_change, time_offsets1, extra_tdnn_opts))
         configs.append('component-node name={0}.linear component={0}.linear '
                        'input={1}'.format(name, input_descriptor))
 
         # The affine layer, from bottleneck-dim (spliced x2) to output-dim
         configs.append('component name={0}.affine type=TdnnComponent '
                        'input-dim={1} output-dim={2} l2-regularize={3} max-change={4} '
-                       'time-offsets={5}'.format(
+                       'time-offsets={5} {6}'.format(
                            name, bottleneck_dim, output_dim, l2_regularize,
-                           max_change, time_offsets2))
+                           max_change, time_offsets2, extra_tdnn_opts))
         configs.append('component-node name={0}.affine component={0}.affine '
                        'input={0}.linear'.format(name))
 

@@ -433,6 +433,10 @@ class OnlineNaturalGradient {
   int32 GetRank() const { return rank_; }
   int32 GetUpdatePeriod() const { return update_period_; }
 
+  void SetPower(BaseFloat power);
+  BaseFloat GetPower() const { return power_; }
+
+
   // see comment where 'frozen_' is declared.
   inline void Freeze(bool frozen) { frozen_ = frozen; }
 
@@ -509,6 +513,9 @@ class OnlineNaturalGradient {
                   CuMatrixBase<BaseFloat> *J_t,
                   CuMatrixBase<BaseFloat> *W_t1) const;
 
+  // computes beta_t_ as a function of rho_t_ and d_t_.
+  void ComputeBetat();
+
   // This function is called if C_t has high condition number; it makes sure
   // that R_{t+1} is orthogonal.  See the section in the extended comment above
   // on "keeping R_t orthogonal".
@@ -543,6 +550,37 @@ class OnlineNaturalGradient {
   // called if self_debug_ = true, makes sure the members satisfy certain
   // properties.
   void SelfTest() const;
+
+
+  // This function, which should only be called if power_ != 1.0,
+  // computes a vector which is to be used to scale each of the
+  // eigenvalues of our factored inverse fisher matrix.
+  // Refer to Eq. (19) in appendix B of https://arxiv.org/pdf/1410.7455.pdf.
+  // The
+  // vector 'scales' will have dimension 'rank_', and its i'th element will contain a
+  // a scaling factor that corresponds to the correction factor required
+  // to our inverse-Fisher matrix's factors when changing from
+  // F^{-1} to F^{-power}.   Define (with reference to Eq. (40) in the appendix
+  // mentioned above),
+  //      old_e(i) ==  1 / (beta_t_ / d_t_(i)  +  1)
+  // and
+  //      new_e(i) ==  1 / (beta_t_ / d_t_(i)  +  1)^power
+  // Then we'll set:
+  //     scales(i) = new_e(i) / old_e(i).
+  //               = (beta_t_ / d_t_(i)  +  1)^(1-power).
+  // We haven't properly derived this (although we have tested its equivalence
+  // to taking the smoothed inverse Fisher, G^{-1}, to the power 'power';
+  // search for 'power' in natural-gradient-online-test.cc).
+  //
+  // We'll effectively be replacing the old Eq. (42), which reads (omitting
+  // the 't' indexes)
+  // \hat{X} = X - X W^T W
+  // with:
+  // \hat{X} = X - X W^T diag(scales) W
+  // which is a kind of hack to insert this power without redoing all the derivations
+  // properly.  'scales' is the ratio between the old E matrix (it's diagonal),
+  // and the new E matrix.
+  void ComputePowerScalingFactor(CuVector<BaseFloat> *scales) const;
 
   // Configuration values:
 
@@ -599,6 +637,14 @@ class OnlineNaturalGradient {
   // the *second* time we see the same data (to avoid biasing the update).
   bool frozen_;
 
+  // 'power' is the power that we take the inverse Fisher to.  This option was
+  // not part of our original presentatiin of this method in
+  // https://arxiv.org/pdf/1410.7455.pdf.  1.0 would corresponds to regular
+  // natural gradient (i.e. the original presentation); 0.5 would correspond to
+  // the square root of the Fisher matrix (like what is done in AdaGrad,
+  // RmsProp, Adam, and related methods).
+  BaseFloat power_;
+
   // t is a counter that measures how many times the user has previously called
   // PreconditionDirections(); it's 0 if that has never been called.
   int32 t_;
@@ -609,6 +655,9 @@ class OnlineNaturalGradient {
   CuMatrix<BaseFloat> W_t_;
   BaseFloat rho_t_;
   Vector<BaseFloat> d_t_;
+  // note: beta_t_ is a function of rho_t_ and d_t_, and is computed right after
+  // they are computed.
+  BaseFloat beta_t_;
 };
 
 } // namespace nnet3

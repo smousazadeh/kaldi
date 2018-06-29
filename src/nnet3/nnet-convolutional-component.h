@@ -443,7 +443,10 @@ class TimeHeightConvolutionComponent: public UpdatableComponent {
                       This becomes the 'num_samples_history'
                       configuration value of the natural gradient objects.  The
                       default value is 2000.0.
-
+      alpha-in,alpha-out  Smoothing constant in the natural gradient matrices for
+                      input and output respectivel.  The default is 4.0.
+      power           Power of the inverse Fisher matrix in the natural gradient code.
+                      The default is 1.0.
  */
 class TdnnComponent: public UpdatableComponent {
  public:

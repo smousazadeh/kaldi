@@ -28,13 +28,14 @@ namespace nnet3 {
 class OnlineNaturalGradientSimple {
  public:
   OnlineNaturalGradientSimple(): rank_(40), num_samples_history_(2000.0), alpha_(4.0),
-                                epsilon_(1.0e-10), delta_(5.0e-04) { }
+                                 epsilon_(1.0e-10), delta_(5.0e-04), power_(1.0) { }
 
   void SetRank(int32 rank) { rank_ = rank; }
 
+  void SetPower(BaseFloat power) { power_ = power; }
+
   void PreconditionDirections(
       CuMatrixBase<BaseFloat> *R,
-      CuVectorBase<BaseFloat> *row_prod,
       BaseFloat *scale);
 
 
@@ -43,7 +44,6 @@ class OnlineNaturalGradientSimple {
 
   void PreconditionDirectionsCpu(
       MatrixBase<double> *R,
-      VectorBase<double> *row_prod,
       BaseFloat *scale);
 
 
@@ -57,6 +57,13 @@ class OnlineNaturalGradientSimple {
   double epsilon_;
   double delta_;
 
+  // this is something that wasn't in the original paper
+  // https://arxiv.org/pdf/1410.7455.pdf.  It allows you to take the inverse
+  // Fisher matrix to a power different than 1.  For example, 0.5 might be a
+  // reasonable choice, which, in diagoinal form, is what methods like AdaGrad,
+  // Adam and RmsProp do.
+  double power_;
+
   // Fisher matrix defined as F_t = R_t^T diag(d_t) R_t + rho_t I.
   Vector<double> d_t_;
   Matrix<double> R_t_;
@@ -66,19 +73,13 @@ class OnlineNaturalGradientSimple {
 
 void OnlineNaturalGradientSimple::PreconditionDirections(
       CuMatrixBase<BaseFloat> *R,
-      CuVectorBase<BaseFloat> *row_prod,
       BaseFloat *scale) {
   Matrix<BaseFloat> R_cpu(*R);
-  Vector<BaseFloat> row_prod_cpu(*row_prod);
   Matrix<double> R_cpu_dbl(R_cpu);
-  Vector<double> row_prod_cpu_dbl(row_prod_cpu);
   PreconditionDirectionsCpu(&R_cpu_dbl,
-                            &row_prod_cpu_dbl,
                             scale);
-  row_prod_cpu.CopyFromVec(row_prod_cpu_dbl);
   R_cpu.CopyFromMat(R_cpu_dbl);
   R->CopyFromMat(R_cpu);
-  row_prod->CopyFromVec(row_prod_cpu);
 }
 
 void OnlineNaturalGradientSimple::InitDefault(int32 D) {
@@ -106,14 +107,13 @@ void OnlineNaturalGradientSimple::InitDefault(int32 D) {
 }
 
 void OnlineNaturalGradientSimple::Init(const MatrixBase<double> &R0) {
-  int32 D = R0.NumCols(), N = R0.NumRows();
+  int32 D = R0.NumCols();
   InitDefault(D);
   int32 num_init_iters = 3;
   for (int32 i = 0; i < num_init_iters; i++) {
     CuMatrix<BaseFloat> R0_copy(R0);
-    CuVector<BaseFloat> row_products(N);
     BaseFloat scale;
-    PreconditionDirections(&R0_copy, &row_products, &scale);
+    PreconditionDirections(&R0_copy, &scale);
   }
 }
 
@@ -127,7 +127,6 @@ BaseFloat OnlineNaturalGradientSimple::Eta(int32 N) const {
 
 void OnlineNaturalGradientSimple::PreconditionDirectionsCpu(
     MatrixBase<double> *X_t,
-    VectorBase<double> *row_prod,
     BaseFloat *scale) {
   if (R_t_.NumRows() == 0)
     Init(*X_t);
@@ -214,19 +213,26 @@ void OnlineNaturalGradientSimple::PreconditionDirectionsCpu(
   SpMatrix<double> G_t(F_t);
   G_t.AddToDiag(alpha_ / D * F_t.Trace());
   SpMatrix<double> G_t_inv(G_t);
-  G_t_inv.Invert();
+  if (power_ == 1.0) {
+    G_t_inv.Invert();
+  } else {
+    G_t_inv.ApplyPow(-1.0 * power_);
+  }
 
-  double beta_t = rho_t_ + alpha_/D * F_t.Trace();
-  // X_hat_t = beta_t X_t G_t^{-1}.
+  // In this testing code we're not using the "arbitrary factor"
+  // beta_t that we used in the real code-- it was only there
+  // to avoid a CUDA operation, but it can have any value without
+  // affecting correctness.
+
+  // X_hat_t = X_t G_t^{-1}.
   Matrix<double> X_hat_t(N, D);
-  X_hat_t.AddMatSp(beta_t, *X_t, kNoTrans, G_t_inv, 0.0);
+  X_hat_t.AddMatSp(1.0, *X_t, kNoTrans, G_t_inv, 0.0);
 
   double tr_x_x = TraceMatMat(*X_t, *X_t, kTrans),
       tr_Xhat_Xhat = TraceMatMat(X_hat_t, X_hat_t, kTrans);
   double gamma = (tr_Xhat_Xhat == 0 ? 1.0 : sqrt(tr_x_x / tr_Xhat_Xhat));
 
   X_t->CopyFromMat(X_hat_t);
-  row_prod->AddDiagMat2(1.0, *X_t, kNoTrans, 0.0);
   *scale = gamma;
 
   // Update the parameters
@@ -271,9 +277,11 @@ void UnitTestPreconditionDirectionsOnline() {
   if (Rand() % 3 == 0) zero = true;
   //else if (Rand() % 2 == 0) one = true;
 
-  CuVector<BaseFloat> row_prod1(N);
   BaseFloat gamma1, gamma2;
   BaseFloat big_eig_factor = RandInt(1, 20);
+  BaseFloat power = 1.0;
+  if (Rand() % 3 == 0)
+    power = 0.6;
   big_eig_factor = big_eig_factor * big_eig_factor;
   Vector<BaseFloat> big_eig_vector(D);
   big_eig_vector.SetRandn();
@@ -283,6 +291,8 @@ void UnitTestPreconditionDirectionsOnline() {
   OnlineNaturalGradient preconditioner2;
   preconditioner1.SetRank(R);
   preconditioner2.SetRank(R);
+  preconditioner1.SetPower(power);
+  preconditioner2.SetPower(power);
   preconditioner2.TurnOnDebug();
 
   int32 num_iters = 100;
@@ -299,16 +309,18 @@ void UnitTestPreconditionDirectionsOnline() {
 
     CuMatrix<BaseFloat> Mcopy1(M), Mcopy2(M);
 
-    preconditioner1.PreconditionDirections(&Mcopy1, &row_prod1, &gamma1);
+    preconditioner1.PreconditionDirections(&Mcopy1, &gamma1);
+    Mcopy1.Scale(gamma1);
 
     preconditioner2.PreconditionDirections(&Mcopy2, &gamma2);
+    Mcopy2.Scale(gamma2);
 
     BaseFloat trace1 = TraceMatMat(M, M, kTrans),
         trace2 = TraceMatMat(Mcopy1, Mcopy1, kTrans);
-    AssertEqual(trace1, trace2 * gamma2 * gamma2, 1.0e-02);
+    AssertEqual(trace1, trace2, 1.0e-02);
 
+    KALDI_LOG << "power = " << power;
     AssertEqual(Mcopy1, Mcopy2);
-    AssertEqual(gamma1, gamma2, 1.0e-02);
 
     // make sure positive definite
     CuVector<BaseFloat> inner_prods(M.NumRows());

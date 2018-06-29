@@ -27,8 +27,8 @@ namespace nnet3 {
 OnlineNaturalGradient::OnlineNaturalGradient():
     rank_(40), update_period_(1), num_samples_history_(2000.0),
     num_minibatches_history_(0.0), alpha_(4.0),
-    epsilon_(1.0e-10), delta_(5.0e-04), frozen_(false), t_(0),
-    self_debug_(false) { }
+    epsilon_(1.0e-10), delta_(5.0e-04), frozen_(false),
+    power_(1.0), t_(0), self_debug_(false) { }
 
 
 /**
@@ -111,6 +111,8 @@ void OnlineNaturalGradient::InitDefault(int32 D) {
   d_t_.Resize(rank_, kUndefined);
   d_t_.Set(epsilon);
   W_t_.Resize(rank_, D, kUndefined);
+  ComputeBetat();
+
   // after the next line, W_ will store the orthogonal matrix R_t.
   InitOrthonormalSpecial(&W_t_);
   BaseFloat E_tii = 1.0 / ( 2.0 + (D + rank_) * alpha_ / D );
@@ -154,6 +156,7 @@ void OnlineNaturalGradient::Init(const CuMatrixBase<BaseFloat> &R0) {
   W_t_.Swap(&this_copy.W_t_);
   d_t_.Swap(&this_copy.d_t_);
   rho_t_ = this_copy.rho_t_;
+  beta_t_ = this_copy.beta_t_;
 }
 
 void OnlineNaturalGradient::PreconditionDirections(
@@ -349,6 +352,12 @@ void OnlineNaturalGradient::PreconditionDirectionsInternal(
     // We're not updating the estimate of the Fisher matrix; we just apply the
     // preconditioning and return.
     // X_hat_t = X_t - H_t W_t
+
+    if (power_ != 1.0) {
+      CuVector<BaseFloat> scales;
+      ComputePowerScalingFactor(&scales);
+      H_t.MulColsVec(scales);
+    }
     X_t->AddMatMat(-1.0, H_t, kNoTrans, W_t, kNoTrans, 1.0);
     return;
   }
@@ -379,7 +388,7 @@ void OnlineNaturalGradient::PreconditionDirectionsInternal(
   }
 
   // beta_t = \rho_t(1+\alpha) + \alpha/D tr(D_t)
-  BaseFloat beta_t = rho_t * (1.0 + alpha_) + alpha_ * d_t.Sum() / D;
+  BaseFloat beta_t = beta_t_;
   Vector<BaseFloat> e_t(R), sqrt_e_t(R), inv_sqrt_e_t(R);
   ComputeEt(d_t, beta_t, &e_t, &sqrt_e_t, &inv_sqrt_e_t);
   KALDI_VLOG(5) << "e_t = " << e_t;
@@ -414,6 +423,11 @@ void OnlineNaturalGradient::PreconditionDirectionsInternal(
     KALDI_WARN << "Floored " << nf << " elements of C_t.";
   }
 
+  if (power_ != 1.0) {
+    CuVector<BaseFloat> scales;
+    ComputePowerScalingFactor(&scales);
+    H_t.MulColsVec(scales);
+  }
   X_t->AddMatMat(-1.0, H_t, kNoTrans, W_t, kNoTrans, 1.0);  // X_hat_t = X_t - H_t W_t
 
   Vector<BaseFloat> sqrt_c_t(c_t);
@@ -449,6 +463,7 @@ void OnlineNaturalGradient::PreconditionDirectionsInternal(
   W_t_.Swap(&W_t1);
   d_t_.CopyFromVec(d_t1);
   rho_t_ = rho_t1;
+  ComputeBetat();
 
   if (self_debug_)
     SelfTest();
@@ -477,6 +492,12 @@ BaseFloat OnlineNaturalGradient::Eta(int32 N) const {
     if (ans > 0.9) ans = 0.9;
     return ans;
   }
+}
+
+void OnlineNaturalGradient::ComputeBetat() {
+  // beta_t = \rho_t(1+\alpha) + \alpha/D tr(D_t)
+  int32 D = W_t_.NumCols();
+  beta_t_ = rho_t_ * (1.0 + alpha_) + alpha_ * d_t_.Sum() / D;
 }
 
 void OnlineNaturalGradient::ComputeWt1(int32 N,
@@ -578,9 +599,9 @@ OnlineNaturalGradient::OnlineNaturalGradient(const OnlineNaturalGradient &other)
     num_samples_history_(other.num_samples_history_),
     num_minibatches_history_(other.num_minibatches_history_),
     alpha_(other.alpha_), epsilon_(other.epsilon_), delta_(other.delta_),
-    frozen_(other.frozen_), t_(other.t_),
+    frozen_(other.frozen_), power_(other.power_), t_(other.t_),
     self_debug_(other.self_debug_), W_t_(other.W_t_),
-    rho_t_(other.rho_t_), d_t_(other.d_t_) { }
+    rho_t_(other.rho_t_), d_t_(other.d_t_), beta_t_(other.beta_t_) { }
 
 
 OnlineNaturalGradient& OnlineNaturalGradient::operator = (
@@ -591,11 +612,14 @@ OnlineNaturalGradient& OnlineNaturalGradient::operator = (
   alpha_ = other.alpha_;
   epsilon_ = other.epsilon_;
   delta_ = other.delta_;
+  // frozen_ is not copied.
+  power_ = other.power_;
   t_ = other.t_;
   self_debug_ = other.self_debug_;
   W_t_ = other.W_t_;
   rho_t_ = other.rho_t_;
   d_t_ = other.d_t_;
+  beta_t_ = other.beta_t_;
   return *this;
 }
 
@@ -623,6 +647,32 @@ void OnlineNaturalGradient::SetAlpha(BaseFloat alpha) {
   alpha_ = alpha;
 }
 
+void OnlineNaturalGradient::SetPower(BaseFloat power) {
+  // probably values in the range 0.5 to 1 are reasonable, but we allow a wider
+  // range for experimentation.
+  KALDI_ASSERT(power >= 0.0 && power <= 2.0);
+  power_ = power;
+}
 
+// There is an extensive comment where this is declared, in the header.
+void OnlineNaturalGradient::ComputePowerScalingFactor(
+    CuVector<BaseFloat> *scales) const {
+  int32 rank = rank_;
+  Vector<BaseFloat> cpu_scales(rank);
+  double beta = beta_t_, power = power_;
+  for (int32 i = 0; i < rank; i++) {
+    double d = d_t_(i),
+        beta_new = std::pow(beta, power),
+        d_new = std::pow(d + beta, power) - beta_new,
+        e_old = 1.0 / (beta / d + 1.0),
+        e_new = 1.0 / (beta_new / d_new + 1.0),
+        scale = e_new / e_old;
+    KALDI_ASSERT(scale - scale == 0.0);  // check for inf/NaN.
+    cpu_scales(i) = scale;
+  }
+  scales->Swap(&cpu_scales);
 }
-}
+
+
+}  // namespace kaldi
+}  // namespace nnet3

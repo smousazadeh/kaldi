@@ -87,7 +87,9 @@ std::string TdnnComponent::Info() const {
            << ", rank-out=" << preconditioner_out_.GetRank()
            << ", num-samples-history=" << preconditioner_in_.GetNumSamplesHistory()
            << ", update-period=" << preconditioner_in_.GetUpdatePeriod()
-           << ", alpha=" << preconditioner_in_.GetAlpha();
+           << ", alpha-in=" << preconditioner_in_.GetAlpha()
+           << ", alpha-out=" << preconditioner_out_.GetAlpha()
+           << ", power=" << preconditioner_in_.GetPower();
   }
   return stream.str();
 }
@@ -151,13 +153,14 @@ void TdnnComponent::InitFromConfig(ConfigLine *cfl) {
   use_natural_gradient_ = true;
   int32 rank_out = -1, rank_in = -1;
   BaseFloat alpha_out = 4.0, alpha_in = 4.0,
-      num_samples_history = 2000.0;
+      num_samples_history = 2000.0, power = 1.0;
   cfl->GetValue("use-natural-gradient", &use_natural_gradient_);
   cfl->GetValue("rank-in", &rank_in);
   cfl->GetValue("rank-out", &rank_out);
   cfl->GetValue("alpha-in", &alpha_in);
   cfl->GetValue("alpha-out", &alpha_out);
   cfl->GetValue("num-samples-history", &num_samples_history);
+  cfl->GetValue("power", &power);
 
   int32 spliced_input_dim =
       input_dim * static_cast<int32>(time_offsets_.size());
@@ -175,6 +178,9 @@ void TdnnComponent::InitFromConfig(ConfigLine *cfl) {
 
   preconditioner_in_.SetUpdatePeriod(4);
   preconditioner_out_.SetUpdatePeriod(4);
+
+  preconditioner_in_.SetPower(power);
+  preconditioner_out_.SetPower(power);
 }
 
 void* TdnnComponent::Propagate(
@@ -391,7 +397,8 @@ void TdnnComponent::Write(std::ostream &os, bool binary) const {
       rank_out = preconditioner_out_.GetRank();
   BaseFloat alpha_in = preconditioner_in_.GetAlpha(),
       alpha_out = preconditioner_out_.GetAlpha(),
-      num_samples_history = preconditioner_in_.GetNumSamplesHistory();
+      num_samples_history = preconditioner_in_.GetNumSamplesHistory(),
+      power = preconditioner_in_.GetPower();
   WriteToken(os, binary, "<NumSamplesHistory>");
   WriteBasicType(os, binary, num_samples_history);
   WriteToken(os, binary, "<AlphaInOut>");
@@ -400,6 +407,10 @@ void TdnnComponent::Write(std::ostream &os, bool binary) const {
   WriteToken(os, binary, "<RankInOut>");
   WriteBasicType(os, binary, rank_in);
   WriteBasicType(os, binary, rank_out);
+  if (power != 1.0) {
+    WriteToken(os, binary, "<Power>");
+    WriteBasicType(os, binary, power);
+  }
   WriteToken(os, binary, "</TdnnComponent>");
 }
 
@@ -430,6 +441,13 @@ void TdnnComponent::Read(std::istream &is, bool binary) {
   ReadBasicType(is, binary, &rank_out);
   preconditioner_in_.SetRank(rank_in);
   preconditioner_out_.SetRank(rank_out);
+  if (PeekToken(is, binary) == 'P') {
+    BaseFloat power;
+    ExpectToken(is, binary, "<Power>");
+    ReadBasicType(is, binary, &power);
+    preconditioner_in_.SetPower(power);
+    preconditioner_out_.SetPower(power);
+  }
   preconditioner_in_.SetNumSamplesHistory(num_samples_history);
   preconditioner_out_.SetNumSamplesHistory(num_samples_history);
   // the update periods are not configurable.
