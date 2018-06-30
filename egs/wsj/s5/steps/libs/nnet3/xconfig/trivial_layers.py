@@ -196,6 +196,8 @@ class XconfigLinearComponent(XconfigLayerBase):
       orthonormal-constraint=0.0
       max-change=0.75
       l2-regularize=0.0
+      alpha=4.0   #  smoothing value, relates to natural gradient
+      power=1.0   #  power, relates to natural gradient.
 
     """
     def __init__(self, first_token, key_to_value, prev_names=None):
@@ -206,7 +208,9 @@ class XconfigLinearComponent(XconfigLayerBase):
                        'dim': -1,
                        'orthonormal-constraint': '',
                        'max-change': 0.75,
-                       'l2-regularize': '' }
+                       'l2-regularize': '',
+                       'alpha': '',
+                       'power': ''}
 
     def check_configs(self):
         if self.config['dim'] <= 0:
@@ -240,7 +244,8 @@ class XconfigLinearComponent(XconfigLayerBase):
         output_dim = self.config['dim']
 
         opts = ''
-        for opt_name in ['orthonormal-constraint', 'max-change', 'l2-regularize']:
+        for opt_name in ['orthonormal-constraint', 'max-change', 'l2-regularize',
+                         'alpha', 'power']:
             value = self.config[opt_name]
             if value != '':
                 opts += ' {0}={1}'.format(opt_name, value)

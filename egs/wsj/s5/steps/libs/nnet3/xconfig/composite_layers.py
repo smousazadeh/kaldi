@@ -81,8 +81,7 @@ class XconfigTdnnfLayer(XconfigLayerBase):
                        'l2-regularize':0.0,
                        'max-change': 0.75,
                        'self-repair-scale': 1.0e-05,
-                       'alpha-in':'', # relates to natural gradient, default in code is 4.0
-                       'alpha-out':'', # relates to natural gradient, default in code is 4.0
+                       'alpha':'', # relates to natural gradient, default in code is 4.0
                        'power':'' # relates to natural gradient, default in code is 1.0
         }
 
@@ -149,7 +148,7 @@ class XconfigTdnnfLayer(XconfigLayerBase):
         dropout_proportion = self.config['dropout-proportion']
         time_stride = self.config['time-stride']
         extra_tdnn_opts = ''
-        for opt in ['alpha-in', 'alpha-out', 'power']:
+        for opt in ['alpha', 'power']:
             if self.config[opt] != '':
                 extra_tdnn_opts += '{0}={1} '.format(opt, self.config[opt])
         if time_stride != 0:
@@ -248,7 +247,10 @@ class XconfigPrefinalLayer(XconfigLayerBase):
                        'small-dim':-1,
                        'l2-regularize':0.0,
                        'max-change': 0.75,
-                       'self-repair-scale': 1.0e-05}
+                       'self-repair-scale': 1.0e-05,
+                       'alpha': '',  # relates to natural gradient.
+                       'power': ''   # relates to natural gradient.
+                     }
 
     def set_derived_configs(self):
         pass
@@ -287,11 +289,17 @@ class XconfigPrefinalLayer(XconfigLayerBase):
         l2_regularize = self.config['l2-regularize']
         max_change = self.config['max-change']
         self_repair_scale = self.config['self-repair-scale']
+        natural_gradient_opts = ''
+        for opt in ['alpha', 'power']:
+            if self.config[opt] != '':
+                natural_gradient_opts += '{0}={1} '.format(opt, self.config[opt])
+
 
         # The affine layer, from input-dim to big-dim.
         configs.append('component name={0}.affine type=NaturalGradientAffineComponent '
-                       'input-dim={1} output-dim={2} l2-regularize={3} max-change={4}'.format(
-                           name, input_dim, big_dim, l2_regularize, max_change))
+                       'input-dim={1} output-dim={2} l2-regularize={3} max-change={4} {5}'.format(
+                           name, input_dim, big_dim, l2_regularize, max_change,
+                           natural_gradient_opts))
         configs.append('component-node name={0}.affine component={0}.affine '
                        'input={1}'.format(name, input_descriptor))
 
@@ -312,9 +320,9 @@ class XconfigPrefinalLayer(XconfigLayerBase):
         # ("floating" orthonormal constraint).
         configs.append('component name={0}.linear type=LinearComponent '
                        'input-dim={1} output-dim={2} l2-regularize={3} max-change={4} '
-                       'orthonormal-constraint=-1 '.format(
-                           name, big_dim, small_dim,
-                           l2_regularize, max_change))
+                       'orthonormal-constraint=-1 {5}'.format(
+                           name, big_dim, small_dim, l2_regularize, max_change,
+                           natural_gradient_opts))
         configs.append('component-node name={0}.linear component={0}.linear '
                        'input={0}.batchnorm1'.format(name))
 
