@@ -87,8 +87,7 @@ std::string TdnnComponent::Info() const {
            << ", rank-out=" << preconditioner_out_.GetRank()
            << ", num-samples-history=" << preconditioner_in_.GetNumSamplesHistory()
            << ", update-period=" << preconditioner_in_.GetUpdatePeriod()
-           << ", alpha-in=" << preconditioner_in_.GetAlpha()
-           << ", alpha-out=" << preconditioner_out_.GetAlpha()
+           << ", alpha=" << preconditioner_in_.GetAlpha()
            << ", power=" << preconditioner_in_.GetPower();
   }
   return stream.str();
@@ -152,13 +151,12 @@ void TdnnComponent::InitFromConfig(ConfigLine *cfl) {
   // 4. Natural-gradient related configs.
   use_natural_gradient_ = true;
   int32 rank_out = -1, rank_in = -1;
-  BaseFloat alpha_out = 4.0, alpha_in = 4.0,
+  BaseFloat alpha = 4.0,
       num_samples_history = 2000.0, power = 1.0;
   cfl->GetValue("use-natural-gradient", &use_natural_gradient_);
   cfl->GetValue("rank-in", &rank_in);
   cfl->GetValue("rank-out", &rank_out);
-  cfl->GetValue("alpha-in", &alpha_in);
-  cfl->GetValue("alpha-out", &alpha_out);
+  cfl->GetValue("alpha", &alpha);
   cfl->GetValue("num-samples-history", &num_samples_history);
   cfl->GetValue("power", &power);
 
@@ -173,8 +171,8 @@ void TdnnComponent::InitFromConfig(ConfigLine *cfl) {
   preconditioner_in_.SetNumSamplesHistory(num_samples_history);
   preconditioner_out_.SetNumSamplesHistory(num_samples_history);
 
-  preconditioner_in_.SetAlpha(alpha_in);
-  preconditioner_out_.SetAlpha(alpha_out);
+  preconditioner_in_.SetAlpha(alpha);
+  preconditioner_out_.SetAlpha(alpha);
 
   preconditioner_in_.SetUpdatePeriod(4);
   preconditioner_out_.SetUpdatePeriod(4);
@@ -395,15 +393,13 @@ void TdnnComponent::Write(std::ostream &os, bool binary) const {
   WriteBasicType(os, binary, use_natural_gradient_);
   int32 rank_in = preconditioner_in_.GetRank(),
       rank_out = preconditioner_out_.GetRank();
-  BaseFloat alpha_in = preconditioner_in_.GetAlpha(),
-      alpha_out = preconditioner_out_.GetAlpha(),
+  BaseFloat alpha = preconditioner_in_.GetAlpha(),
       num_samples_history = preconditioner_in_.GetNumSamplesHistory(),
       power = preconditioner_in_.GetPower();
   WriteToken(os, binary, "<NumSamplesHistory>");
   WriteBasicType(os, binary, num_samples_history);
-  WriteToken(os, binary, "<AlphaInOut>");
-  WriteBasicType(os, binary, alpha_in);
-  WriteBasicType(os, binary, alpha_out);
+  WriteToken(os, binary, "<Alpha>");
+  WriteBasicType(os, binary, alpha);
   WriteToken(os, binary, "<RankInOut>");
   WriteBasicType(os, binary, rank_in);
   WriteBasicType(os, binary, rank_out);
@@ -427,15 +423,22 @@ void TdnnComponent::Read(std::istream &is, bool binary) {
   ExpectToken(is, binary, "<UseNaturalGradient>");
   ReadBasicType(is, binary, &use_natural_gradient_);
   int32 rank_in,  rank_out;
-  BaseFloat alpha_in, alpha_out,
-      num_samples_history;
+  BaseFloat alpha, num_samples_history;
   ExpectToken(is, binary, "<NumSamplesHistory>");
   ReadBasicType(is, binary, &num_samples_history);
-  ExpectToken(is, binary, "<AlphaInOut>");
-  ReadBasicType(is, binary, &alpha_in);
-  ReadBasicType(is, binary, &alpha_out);
-  preconditioner_in_.SetAlpha(alpha_in);
-  preconditioner_out_.SetAlpha(alpha_out);
+  { // this can be simplified after a while.
+    std::string token;
+    ReadToken(is, binary, &token);
+    if (token == "<AlphaInOut>") {
+      ReadBasicType(is, binary, &alpha);
+      ReadBasicType(is, binary, &alpha);
+    } else {
+      KALDI_ASSERT(token == "<Alpha>");
+      ReadBasicType(is, binary, &alpha);
+    }
+  }
+  preconditioner_in_.SetAlpha(alpha);
+  preconditioner_out_.SetAlpha(alpha);
   ExpectToken(is, binary, "<RankInOut>");
   ReadBasicType(is, binary, &rank_in);
   ReadBasicType(is, binary, &rank_out);

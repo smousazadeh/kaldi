@@ -2753,7 +2753,7 @@ void NaturalGradientAffineComponent::Read(std::istream &is, bool binary) {
   ExpectToken(is, binary, "<BiasParams>");
   bias_params_.Read(is, binary);
 
-  BaseFloat num_samples_history, alpha;
+  BaseFloat num_samples_history, alpha, power;
   int32 rank_in, rank_out, update_period;
 
   ExpectToken(is, binary, "<RankIn>");
@@ -2772,11 +2772,20 @@ void NaturalGradientAffineComponent::Read(std::istream &is, bool binary) {
   ReadBasicType(is, binary, &num_samples_history);
   ExpectToken(is, binary, "<Alpha>");
   ReadBasicType(is, binary, &alpha);
+  if (PeekToken(is, binary) == 'P') {
+    ExpectToken(is, binary, "<Power>");
+    ReadBasicType(is, binary, &power);
+  } else {
+    power = 1.0;
+  }
+
 
   preconditioner_in_.SetNumSamplesHistory(num_samples_history);
   preconditioner_out_.SetNumSamplesHistory(num_samples_history);
   preconditioner_in_.SetAlpha(alpha);
   preconditioner_out_.SetAlpha(alpha);
+  preconditioner_in_.SetPower(power);
+  preconditioner_out_.SetPower(power);
   preconditioner_in_.SetRank(rank_in);
   preconditioner_out_.SetRank(rank_out);
   preconditioner_in_.SetUpdatePeriod(update_period);
@@ -2878,7 +2887,7 @@ void NaturalGradientAffineComponent::InitFromConfig(ConfigLine *cfl) {
 
   // Set natural-gradient configs.
   BaseFloat num_samples_history = 2000.0,
-      alpha = 4.0;
+      alpha = 4.0, power = 1.0;
   int32 rank_in = -1, rank_out = -1,
       update_period = 4;
   cfl->GetValue("num-samples-history", &num_samples_history);
@@ -2886,6 +2895,7 @@ void NaturalGradientAffineComponent::InitFromConfig(ConfigLine *cfl) {
   cfl->GetValue("rank-in", &rank_in);
   cfl->GetValue("rank-out", &rank_out);
   cfl->GetValue("update-period", &update_period);
+  cfl->GetValue("power", &power);
 
   if (rank_in < 0)
     rank_in = std::min<int32>(20, (InputDim() + 1) / 2);
@@ -2896,6 +2906,8 @@ void NaturalGradientAffineComponent::InitFromConfig(ConfigLine *cfl) {
   preconditioner_out_.SetNumSamplesHistory(num_samples_history);
   preconditioner_in_.SetAlpha(alpha);
   preconditioner_out_.SetAlpha(alpha);
+  preconditioner_in_.SetPower(power);
+  preconditioner_out_.SetPower(power);
   preconditioner_in_.SetRank(rank_in);
   preconditioner_out_.SetRank(rank_out);
   preconditioner_in_.SetUpdatePeriod(update_period);
@@ -2929,6 +2941,10 @@ void NaturalGradientAffineComponent::Write(std::ostream &os,
   WriteBasicType(os, binary, preconditioner_in_.GetNumSamplesHistory());
   WriteToken(os, binary, "<Alpha>");
   WriteBasicType(os, binary, preconditioner_in_.GetAlpha());
+  if (preconditioner_in_.GetPower() != 1.0) {
+    WriteToken(os, binary, "<Power>");
+    WriteBasicType(os, binary, preconditioner_in_.GetPower());
+  }
   WriteToken(os, binary, "</NaturalGradientAffineComponent>");
 }
 
@@ -2940,6 +2956,8 @@ std::string NaturalGradientAffineComponent::Info() const {
          << ", num-samples-history=" << preconditioner_in_.GetNumSamplesHistory()
          << ", update-period=" << preconditioner_in_.GetUpdatePeriod()
          << ", alpha=" << preconditioner_in_.GetAlpha();
+  if (preconditioner_in_.GetPower() != 1)
+    stream << ", power=" << preconditioner_in_.GetPower();
   return stream.str();
 }
 
@@ -3040,12 +3058,16 @@ void LinearComponent::Read(std::istream &is, bool binary) {
 
   // Read various natural-gradient-related configs.
   int32 rank_in,  rank_out, update_period;
-  BaseFloat alpha, num_samples_history;
+  BaseFloat alpha, power = 1.0, num_samples_history;
   ExpectToken(is, binary, "<RankInOut>");
   ReadBasicType(is, binary, &rank_in);
   ReadBasicType(is, binary, &rank_out);
   ExpectToken(is, binary, "<Alpha>");
   ReadBasicType(is, binary, &alpha);
+  if (PeekToken(is, binary) == 'P') {
+    ExpectToken(is, binary, "<Power>");
+    ReadBasicType(is, binary, &power);
+  }
   ExpectToken(is, binary, "<NumSamplesHistory>");
   ReadBasicType(is, binary, &num_samples_history);
   ExpectToken(is, binary, "<UpdatePeriod>");
@@ -3053,6 +3075,8 @@ void LinearComponent::Read(std::istream &is, bool binary) {
 
   preconditioner_in_.SetAlpha(alpha);
   preconditioner_out_.SetAlpha(alpha);
+  preconditioner_in_.SetPower(power);
+  preconditioner_out_.SetPower(power);
   preconditioner_in_.SetRank(rank_in);
   preconditioner_out_.SetRank(rank_out);
   preconditioner_in_.SetNumSamplesHistory(num_samples_history);
@@ -3094,13 +3118,14 @@ void LinearComponent::InitFromConfig(ConfigLine *cfl) {
   }
   // Read various natural-gradient-related configs.
   int32 rank_in = -1, rank_out = -1, update_period = 4;
-  BaseFloat alpha = 4.0,
+  BaseFloat alpha = 4.0, power = 1.0,
       num_samples_history = 2000.0;
 
   use_natural_gradient_ = true;
 
   cfl->GetValue("num-samples-history", &num_samples_history);
   cfl->GetValue("alpha", &alpha);
+  cfl->GetValue("power", &power);
   cfl->GetValue("rank-in", &rank_in);
   cfl->GetValue("rank-out", &rank_out);
   cfl->GetValue("update-period", &update_period);
@@ -3113,6 +3138,8 @@ void LinearComponent::InitFromConfig(ConfigLine *cfl) {
 
   preconditioner_in_.SetAlpha(alpha);
   preconditioner_out_.SetAlpha(alpha);
+  preconditioner_in_.SetPower(power);
+  preconditioner_out_.SetPower(power);
   preconditioner_in_.SetRank(rank_in);
   preconditioner_out_.SetRank(rank_out);
   preconditioner_in_.SetNumSamplesHistory(num_samples_history);
@@ -3145,12 +3172,17 @@ void LinearComponent::Write(std::ostream &os,
       rank_out = preconditioner_out_.GetRank(),
       update_period = preconditioner_in_.GetUpdatePeriod();
   BaseFloat alpha = preconditioner_in_.GetAlpha(),
+      power = preconditioner_in_.GetPower(),
       num_samples_history = preconditioner_in_.GetNumSamplesHistory();
   WriteToken(os, binary, "<RankInOut>");
   WriteBasicType(os, binary, rank_in);
   WriteBasicType(os, binary, rank_out);
   WriteToken(os, binary, "<Alpha>");
   WriteBasicType(os, binary, alpha);
+  if (power != 1.0) {
+    WriteToken(os, binary, "<Power>");
+    WriteBasicType(os, binary, power);
+  }
   WriteToken(os, binary, "<NumSamplesHistory>");
   WriteBasicType(os, binary, num_samples_history);
   WriteToken(os, binary, "<UpdatePeriod>");
@@ -3176,6 +3208,8 @@ std::string LinearComponent::Info() const {
          << preconditioner_in_.GetNumSamplesHistory()
          << ", update-period=" << preconditioner_in_.GetUpdatePeriod()
          << ", alpha=" << preconditioner_in_.GetAlpha();
+  if (preconditioner_in_.GetPower() != 1)
+    stream << ", power=" << preconditioner_in_.GetPower();
   return stream.str();
 }
 

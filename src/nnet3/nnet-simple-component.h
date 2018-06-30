@@ -818,6 +818,8 @@ class LogSoftmaxComponent: public NonlinearComponent {
                             minibatches) we update the Fisher-matrix estimates;
                             making this > 1 saves a little time in training.
                             default=4.
+      power                 Power to which we take the inverse Fisher matrix.
+                            Default is 1.0.
 */
 class NaturalGradientAffineComponent: public AffineComponent {
  public:
@@ -909,6 +911,8 @@ class NaturalGradientAffineComponent: public AffineComponent {
       alpha                 Constant that determines how much we smooth the
                             Fisher-matrix estimates with the unit matrix.
                             Larger means more smoothing. default=4.0
+      power                 Power that we take the inverse Fisher to in
+                            natural gradient; default=1.0.
       rank-in               Rank used in low-rank-plus-unit estimate of Fisher
                             matrix in the input space.  default=20.
       rank-out              Rank used in low-rank-plus-unit estimate of Fisher
