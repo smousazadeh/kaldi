@@ -1,8 +1,21 @@
 #!/bin/bash
 
-# 1f10r5 is as 1f40r2 but adding 2 more layers (one with time-stride = 1 and
-# two with time-strid = 3), and reducing the dim from 128 to 96.  Trying to see if greater depth
+# 1f10r5 is as 1f10r2 but adding 2 more layers (one with time-stride = 1 and
+# two with time-stride = 3), and reducing the dim from 128 to 96.  Trying to see if greater depth
 # can compensate for skinnier bottlenecks.
+
+# It's a little worse on average, although the training objective is better.
+# local/chain/compare_wer_general.sh exp/chain_cleaned/tdnn1f10r2_sp_bi exp/chain_cleaned/tdnn1f10r5_sp_bi
+# System                tdnn1f10r2_sp_bi tdnn1f10r5_sp_bi
+# WER on dev(orig)            8.0       8.1
+# WER on dev(rescored)        7.3       7.4
+# WER on test(orig)           8.2       8.1
+# WER on test(rescored)       7.7       7.8
+# Final train prob        -0.0637   -0.0624
+# Final valid prob        -0.0885   -0.0896
+# Final train prob (xent)   -0.9122   -0.8625
+# Final valid prob (xent)   -0.9988   -0.9687
+# Num-params                 8675360   8539168
 
 # 1f10r2 is supposed to be the same as 1f10r but generating the configs a different
 #  way, using 'tdnnf-layer'.
@@ -283,6 +296,9 @@ if [ $stage -le 18 ]; then
     utils/create_split_dir.pl \
      /export/b0{5,6,7,8}/$USER/kaldi-data/egs/ami-$(date +'%m_%d_%H_%M')/s5/$dir/egs/storage $dir/egs/storage
   fi
+
+  # Limit this particular one to c machines as it needs more memory than usual.
+  decode_cmd="$decode_cmd --config /home/dpovey/queue_conly.conf"
 
  steps/nnet3/chain/train.py --stage $train_stage \
     --cmd "$decode_cmd" \

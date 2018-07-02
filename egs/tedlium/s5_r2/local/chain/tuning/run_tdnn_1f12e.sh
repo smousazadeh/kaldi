@@ -3,7 +3,7 @@
 
 # 1f12e is as 1f12d but actually adding the orthonormal constraint, which
 #  I had previously omitted accidentally.
-# It does seem to help a bit!
+# It does seem to help a bit!  (but see below).
 # local/chain/compare_wer_general.sh exp/chain_cleaned/tdnn1f12_sp_bi exp/chain_cleaned/tdnn1f12d_sp_bi exp/chain_cleaned/tdnn1f12e_sp_bi
 # System                tdnn1f12_sp_bi tdnn1f12d_sp_bi tdnn1f12e_sp_bi
 # WER on dev(orig)            8.1       8.1       7.9
@@ -15,6 +15,20 @@
 # Final train prob (xent)   -0.8819   -0.8576   -0.8853
 # Final valid prob (xent)   -0.9872   -0.9829   -0.9849
 # Num-params                 9776912   9776912   9776912
+
+# .. but comparing it with the original 10h experiment does not show a very compelling
+#  improvement.
+# local/chain/compare_wer_general.sh exp/chain_cleaned/tdnn1f10h_sp_bi exp/chain_cleaned/tdnn1f12e_sp_bi
+# System                tdnn1f10h_sp_bi tdnn1f12e_sp_bi
+# WER on dev(orig)            8.1       7.9
+# WER on dev(rescored)        7.5       7.4
+# WER on test(orig)           8.1       8.1
+# WER on test(rescored)       7.7       7.7
+# Final train prob        -0.0603   -0.0615
+# Final valid prob        -0.0893   -0.0908
+# Final train prob (xent)   -0.8857   -0.8853
+# Final valid prob (xent)   -1.0092   -0.9849
+# Num-params                 9953312   9776912
 
 # 1f12d is as 1f12c but setting key-scale to 0.5 (default is 1/sqrt(key-dim), I think,
 # which in this case is 0.15.
