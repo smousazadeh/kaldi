@@ -59,10 +59,11 @@ struct NnetInferenceTask {
   // The input frames, which are treated as being numbered t=0, t=1, etc.  (If
   // the lowest t value was originally nonzero in the 'natural' numbering, this
   // just means we conceptually shift the 't' values; the only real constraint
-  // is that the 't' values are contiguous.
+  // is that the 't' values are contiguous.  This is used destructively by
+  // NnetBatchComputer; it may be resized to empty.
   Matrix<BaseFloat> input;
 
-  // The index of the first output frame (in the shifted numbering where the
+  // The index of the first input frame (in the shifted numbering where the
   // first output frame is numbered zero.  This will typically be less than one,
   // because most network topologies require left context.  If this was an
   // 'interior' chunk of a recurrent topology like LSTMs, first_input_t may be
@@ -84,22 +85,30 @@ struct NnetInferenceTask {
   // multiple of the number of chunks.
   int32 num_initial_unused_output_frames;
 
-  // 0 < num_used_output_frames <= num_output_frames - num_initial_unused_output_frames
-  // is the number of output frames which are actually going to be used by the
-  // user.  (Due to edge effects, not all are necessarily used).
+  // 0 < num_used_output_frames <= num_output_frames -
+  // num_initial_unused_output_frames is the number of output frames which are
+  // actually going to be used by the user.  (Due to edge effects, not all are
+  // necessarily used).
   int32 num_used_output_frames;
 
-  // first_used_output_frame_index is provided for the convenience of the user
-  // so that they can know how this chunk relates to the utterance which it is
-  // a part of.
-  // It represents an output frame index in the original utterance-- after
-  // subsampling; so not a 't' value but a 't' value divided by
-  // frame-subsampling-factor.  Specifically, it tells you the row index in the
-  // full utterance's output which corresponds to the first 'used' frame index
-  // at the output of this chunk, specifically: the row numbered
-  // 'num_initial_unused_output_frames' in the 'output' or 'output_cpu' data
-  // member.
-  int32 first_used_output_frame_index;
+  // Members of this union are not inspected by the NnetBatchComputer object;
+  // they are used in calling code for different purposes.
+  union {
+    // first_used_output_frame_index is provided for the convenience of the user
+    // so that they can know how this chunk relates to the utterance which it is
+    // a part of.
+    // It represents an output frame index in the original utterance-- after
+    // subsampling; so not a 't' value but a 't' value divided by
+    // frame-subsampling-factor.  Specifically, it tells you the row index in the
+    // full utterance's output which corresponds to the first 'used' frame index
+    // at the output of this chunk, specifically: the row numbered
+    // 'num_initial_unused_output_frames' in the 'output' or 'output_cpu' data
+    // member.
+    int32 first_used_output_frame_index;
+    // Used by the xvector code to remember how many frames this should be treated
+    // as representing (for weighted averaging).
+    int32 xvector_num_frames;
+  } user_defined;
 
   // True if this chunk is an 'edge' (the beginning or end of an utterance) AND
   // is structurally different somehow from non-edge chunk, e.g. requires less
@@ -112,7 +121,8 @@ struct NnetInferenceTask {
   // it should be quite rare.  We use a minibatch size of 1 in this case.
   bool is_irregular;
 
-  // The i-vector for this chunk, if this network accepts i-vector inputs.
+  // The i-vector for this chunk, if this network accepts i-vector inputs.  This
+  // is used destructively by NnetBatchComputer, it may be resized to empty.
   Vector<BaseFloat> ivector;
 
   // A priority (higher is more urgent); may be either sign.  May be updated
@@ -474,6 +484,11 @@ class NnetBatchComputer {
   // below n, the corresponding condition variable is notified (if it exists).
   std::unordered_map<int32, std::condition_variable*> no_more_than_n_minibatches_full_;
 
+ protected:
+  // Make class NnetXvectorInference a friend so it can see nnet_left_context_,
+  // nnet_right_context_, input_dim_.
+  friend class NnetXvectorInference;
+
   // some static information about the neural net, computed at the start.
   int32 nnet_left_context_;
   int32 nnet_right_context_;
@@ -509,6 +524,8 @@ class NnetBatchInference {
       @param [in] ivector  If non-NULL, this is expected to be the
              i-vector for this utterance (and 'online_ivectors' should
              be NULL).
+      @param [in] online_ivectors  Matrix of ivectors, one every
+             'online_ivector_period' frames.
       @param [in] online_ivector_period  Only relevant if
              'online_ivector' is non-NULL, this says how many
              frames of 'input' is covered by each row of
@@ -554,6 +571,113 @@ class NnetBatchInference {
   // static wrapper for Compute().
   static void ComputeFunc(NnetBatchInference *object) { object->Compute(); }
 
+
+  // This object implements the internals of what this class does.  It is
+  // accessed both by the main thread (from where AcceptInput(), Finished() and
+  // GetOutput() are called), and from the background thread in which Compute()
+  // is called.
+  NnetBatchComputer computer_;
+
+  // This is set to true when the user calls Finished(); the computation thread
+  // sees it and knows to flush
+  bool is_finished_;
+
+  // This semaphore is signaled by the main thread (the thread in which
+  // AcceptInput() is called) every time a new utterance is added, and waited on
+  // in the background thread in which Compute() is called.
+  Semaphore tasks_ready_semaphore_;
+
+  struct UtteranceInfo {
+    std::string utterance_id;
+    // The tasks into which we split this utterance.
+    std::vector<NnetInferenceTask> tasks;
+    // 'num_tasks_finished' is the number of tasks which are known to be
+    // finished, meaning we successfully waited for those tasks' 'semaphore'
+    // member.  When this reaches tasks.size(), we are ready to consolidate
+    // the output into a single matrix and return it to the user.
+    size_t num_tasks_finished;
+  };
+
+  // This list is only accessed directly by the main thread, by AcceptInput()
+  // and GetOutput().  It is a list of utterances, with more recently added ones
+  // at the back.  When utterances are given to the user by GetOutput(),
+  std::list<UtteranceInfo*> utts_;
+
+  int32 utterance_counter_;  // counter that increases on every utterance.
+
+  // The thread running the Compute() process.
+  std::thread compute_thread_;
+};
+
+
+/**
+   This class implements a fast way to compute xvectors, using NnetBatchComputer
+   to batch things up.
+ */
+class NnetXvectorInference {
+ public:
+
+  // TODO: are any extra args needed?
+  // Note: we could use opts.frames_per_chunk as the chunk size.
+  NnetXvectorInference(
+      const NnetBatchComputerOptions &opts,
+      const Nnet &nnet);
+
+  /**
+    The user should call this one by one for the utterances that this class
+    needs to compute (interspersed with calls to GetOutput()).  This call
+    will block when enough ready-to-be-computed data is present.
+
+      @param [in] utterance_id  The string representing the utterance-id;
+             it will be provided back to the user when GetOutput() is
+             called.
+      @param [in] input  The input features (e.g. MFCCs)
+  */
+  void AcceptInput(const std::string &utterance_id,
+                   const Matrix<BaseFloat> &input);
+
+
+  /**
+     The user should call this after the last input has been provided
+     via AcceptInput().  This will force the last utterances to be
+     flushed out (to be retrieved by GetOutput()), rather than waiting
+     until the relevant minibatches are full.
+  */
+  void Finished();
+
+  /**
+      The user should call this to obtain output.  It's guaranteed to
+      be in the same order as the input was provided, but it may be
+      delayed.  'output' will be the computed xvector.
+
+      This call does not block (i.e. does not wait on any semaphores) unless you
+      have previously called Finished().  It returns true if it actually got any
+      output; if none was ready it will return false.
+  */
+  bool GetOutput(std::string *utterance_id,
+                 Vector<BaseFloat> *output);
+
+  ~NnetXvectorInference();
+ private:
+  KALDI_DISALLOW_COPY_AND_ASSIGN(NnetXvectorInference);
+
+  // This version of SplitUtteranceIntoTasks() is specialized for x-vector
+  // computation.  Only frame zero is ever requested on the output.
+  void SplitUtteranceIntoTasks(
+      const Matrix<BaseFloat> &input,
+      std::vector<NnetInferenceTask> *tasks);
+
+  // This is the computation thread, which is run in the background.  It will
+  // exit once the user calls Finished() and all computation is completed.
+  void Compute();
+
+  // static wrapper for Compute().
+  static void ComputeFunc(NnetXvectorInference *object) { object->Compute(); }
+
+
+  // This empty vector is passed to the constructor of computer_,
+  // since there are no priors.
+  Vector<BaseFloat> empty_vector_;
 
   // This object implements the internals of what this class does.  It is
   // accessed both by the main thread (from where AcceptInput(), Finished() and

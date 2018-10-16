@@ -596,9 +596,8 @@ void GetOutputFrameInfoForTasks(
     (*tasks)[i].output_t_stride = opts.frame_subsampling_factor;
   }
   if (num_subsampled_frames <= fpc) {  // there is one chunk.
-    KALDI_ASSERT(num_tasks == 1);  // TODO: remove this.
     NnetInferenceTask &task = (*tasks)[0];
-    task.first_used_output_frame_index = 0;
+    task.user_defined.first_used_output_frame_index = 0;
     if (opts.ensure_exact_final_context) {
       task.num_output_frames = num_subsampled_frames;
       task.num_initial_unused_output_frames = 0;
@@ -616,7 +615,7 @@ void GetOutputFrameInfoForTasks(
       task.num_output_frames = fpc;
       task.num_initial_unused_output_frames = 0;
       task.num_used_output_frames = fpc;
-      task.first_used_output_frame_index = i * fpc;
+      task.user_defined.first_used_output_frame_index = i * fpc;
       task.is_irregular = false;
     }
     // The last chunk will end on the last frame of the file, but we won't use
@@ -627,21 +626,22 @@ void GetOutputFrameInfoForTasks(
         (num_subsampled_frames - fpc);
     task.num_used_output_frames =
         num_subsampled_frames - ((num_tasks - 1) * fpc);
-    task.first_used_output_frame_index = (num_tasks - 1) * fpc;
+    task.user_defined.first_used_output_frame_index = (num_tasks - 1) * fpc;
     task.is_irregular = false;
   }
 
   if (true) {
-    // Do some checking.  TODO: remove this.
-    KALDI_ASSERT((*tasks)[0].first_used_output_frame_index == 0);
+    // Do some checking.
+    KALDI_ASSERT((*tasks)[0].user_defined.first_used_output_frame_index == 0);
     for (int32 i = 1; i < num_tasks; i++) {
-      KALDI_ASSERT((*tasks)[i].first_used_output_frame_index ==
-                   (*tasks)[i-1].first_used_output_frame_index +
+      KALDI_ASSERT((*tasks)[i].user_defined.first_used_output_frame_index ==
+                   (*tasks)[i-1].user_defined.first_used_output_frame_index +
                    (*tasks)[i-1].num_used_output_frames);
     }
-    KALDI_ASSERT((*tasks)[num_tasks-1].first_used_output_frame_index +
-                 (*tasks)[num_tasks-1].num_used_output_frames ==
-                 num_subsampled_frames);
+    int32 last = num_tasks - 1;
+    KALDI_ASSERT((*tasks)[last].user_defined.first_used_output_frame_index +
+                 (*tasks)[last].num_used_output_frames == num_subsampled_frames);
+
     for (int32 i = 0; i < num_tasks; i++) {
       const NnetInferenceTask &task = (*tasks)[i];
       KALDI_ASSERT(task.num_used_output_frames +
@@ -662,7 +662,7 @@ void AddOnlineIvectorsToTasks(
     NnetInferenceTask &task = (*tasks)[i];
     // begin_output_t and end_output_t are the subsampled frame indexes at
     // the output; you'd have to multiply them by f to get real frame indexes.
-    int32 begin_output_t = task.first_used_output_frame_index -
+    int32 begin_output_t = task.user_defined.first_used_output_frame_index -
         task.num_initial_unused_output_frames,
         mid_output_t = begin_output_t + (task.num_output_frames / 2),
         mid_input_t = mid_output_t * f,
@@ -720,7 +720,7 @@ static void SplitInputToTasks(const NnetBatchComputerOptions &opts,
     NnetInferenceTask &task = (*tasks)[i];
     // begin_output_t and end_output_t are the subsampled frame indexes at
     // the output; you'd have to multiply them by f to get real frame indexes.
-    int32 begin_output_t = task.first_used_output_frame_index -
+    int32 begin_output_t = task.user_defined.first_used_output_frame_index -
         task.num_initial_unused_output_frames,
         end_output_t = begin_output_t + task.num_output_frames;
     // begin_input_t and end_input_t are the real 't' values corresponding to
@@ -851,7 +851,8 @@ void MergeTaskOutput(
     const NnetInferenceTask &task = tasks[i];
     int32 skip = task.num_initial_unused_output_frames,
         num_used = task.num_used_output_frames;
-    KALDI_ASSERT(cur_output_frame == task.first_used_output_frame_index);
+    KALDI_ASSERT(cur_output_frame ==
+                 task.user_defined.first_used_output_frame_index);
     if (task.output_to_cpu) {
       output->RowRange(cur_output_frame, num_used).CopyFromMat(
           task.output_cpu.RowRange(skip, num_used));
@@ -954,6 +955,145 @@ void NnetBatchInference::Finished() {
 
 // This is run as the thread of class NnetBatchInference.
 void NnetBatchInference::Compute() {
+  bool allow_partial_minibatch = false;
+  while (true) {
+    // keep calling Compute() as long as it makes progress.
+    while (computer_.Compute(allow_partial_minibatch));
+
+    // ... then wait on tasks_ready_semaphore_.
+    tasks_ready_semaphore_.Wait();
+    if (is_finished_) {
+      allow_partial_minibatch = true;
+      while (computer_.Compute(allow_partial_minibatch));
+      return;
+    }
+  }
+}
+
+NnetXvectorInference::NnetXvectorInference(
+    const NnetBatchComputerOptions &opts,
+    const Nnet &nnet):
+    computer_(opts, nnet, empty_vector_),
+    is_finished_(false),
+    utterance_counter_(0) {
+  // 'thread_' will run the Compute() function in the background.
+  compute_thread_ = std::thread(ComputeFunc, this);
+}
+
+void NnetXvectorInference::SplitUtteranceIntoTasks(
+    const Matrix<BaseFloat> &input,
+    std::vector<NnetInferenceTask> *tasks) {
+  // TODO.
+
+  /**
+
+     Some notes on the members of the tasks (see struct NnetInferenceTask).
+
+     task->input will be a range of the 'input' arg to this function, possibly with the
+      first or last element repeated.  There will likely be some overlap in these chunks due
+      to required left/right context, i.e. we'll split into chunks and then add that
+      much left and right context.
+
+     task->first_input_t will be the negative of computer_.nnet_left_context_
+        (which we can access, as this class is a friend of that class).
+     task->output_t_stride is a don't-care, set it to 1.
+     task->num_output_frames is 1.
+     task->num_initial_unused_output_frames is 0.
+     task->num_used_output_frames is 1.
+
+     task->user_defined.xvector_num_frames is however many frames were
+            in this chunk before we added the left-context and right-context.
+            (computer_.nnet_left_context_ / computer_.nnet_right_context, plus
+            any extra left/right context specified in the options).
+     task->is_edge will be set if it's an edge *and* that makes a difference
+           to the structure of the minibatch (depends on extra_*_context_{initial,final} options).
+     task->is_irregular will be set if this was a smaller-than-normal-size chunk, due
+         to a short utterance.
+     task->ivector will be empty.
+
+     task->priority will be set to zero (the calling code will later set it).
+     task->output_to_cpu will be true.
+  */
+}
+
+void NnetXvectorInference::AcceptInput(
+    const std::string &utterance_id,
+    const Matrix<BaseFloat> &input) {
+
+  UtteranceInfo *info = new UtteranceInfo();
+  info->utterance_id = utterance_id;
+  info->num_tasks_finished = 0;
+  this->SplitUtteranceIntoTasks(input, &(info->tasks));
+  if (info->tasks.empty()) {
+    // Nothing to do.  It would have printed a warning.  TODO: if this is not
+    // possible to reach, delete this block.
+    delete info;
+    return;
+  }
+
+  // Setting this to a nonzero value will cause the AcceptTask() call below to
+  // hang until the computation thread has made some progress, if too much
+  // data is already queued.
+  int32 max_full_minibatches = 2;
+
+  // Earlier utterances have higher priority, which is important to make sure
+  // that their corresponding tasks are completed and they can be output to disk.
+  double priority = -1.0 * (utterance_counter_++);
+  for (size_t i = 0; i < info->tasks.size(); i++) {
+    info->tasks[i].priority = priority;
+    computer_.AcceptTask(&(info->tasks[i]), max_full_minibatches);
+  }
+  utts_.push_back(info);
+  tasks_ready_semaphore_.Signal();
+}
+
+bool NnetXvectorInference::GetOutput(std::string *utterance_id,
+                                     Vector<BaseFloat> *output) {
+  if (utts_.empty())
+    return false;
+
+  UtteranceInfo *info = *utts_.begin();
+  std::vector<NnetInferenceTask> &tasks = info->tasks;
+  int32 num_tasks = tasks.size();
+  for (; info->num_tasks_finished < num_tasks; ++info->num_tasks_finished) {
+    Semaphore &semaphore = tasks[info->num_tasks_finished].semaphore;
+    if (is_finished_) {
+      semaphore.Wait();
+    } else {
+      if (!semaphore.TryWait()) {
+        // If not all of the tasks of this utterance are ready yet,
+        // just return false.
+        return false;
+      }
+    }
+  }
+  // TODO.  Make a weighted average of the x-vectors outputs and output to 'output'.
+  // In the normal inference case this was done by MergeTaskOutput(), but it's simple
+  // and can probably be put right here.
+  exit(1);
+
+
+  *utterance_id = info->utterance_id;
+  delete info;
+  utts_.pop_front();
+  return true;
+}
+
+NnetXvectorInference::~NnetXvectorInference() {
+  if (!is_finished_)
+    KALDI_ERR << "Object destroyed before Finished() was called.";
+  if (!utts_.empty())
+    KALDI_ERR << "You should get all output before destroying this object.";
+  compute_thread_.join();
+}
+
+void NnetXvectorInference::Finished() {
+  is_finished_ = true;
+  tasks_ready_semaphore_.Signal();
+}
+
+// This is run as the thread of class NnetXvectorInference.
+void NnetXvectorInference::Compute() {
   bool allow_partial_minibatch = false;
   while (true) {
     // keep calling Compute() as long as it makes progress.
