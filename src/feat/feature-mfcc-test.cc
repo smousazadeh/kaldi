@@ -188,7 +188,7 @@ static void UnitTestHTKCompare1() {
   }
 
   std::cout << "Test passed :)\n\n";
-  
+
   unlink("tmp.test.wav.fea_kaldi.1");
 }
 
@@ -272,7 +272,7 @@ static void UnitTestHTKCompare2() {
   }
 
   std::cout << "Test passed :)\n\n";
-  
+
   unlink("tmp.test.wav.fea_kaldi.2");
 }
 
@@ -357,7 +357,7 @@ static void UnitTestHTKCompare3() {
   }
 
   std::cout << "Test passed :)\n\n";
-  
+
   unlink("tmp.test.wav.fea_kaldi.3");
 }
 
@@ -440,7 +440,7 @@ static void UnitTestHTKCompare4() {
   }
 
   std::cout << "Test passed :)\n\n";
-  
+
   unlink("tmp.test.wav.fea_kaldi.4");
 }
 
@@ -528,7 +528,7 @@ static void UnitTestHTKCompare5() {
   }
 
   std::cout << "Test passed :)\n\n";
-  
+
   unlink("tmp.test.wav.fea_kaldi.5");
 }
 
@@ -613,11 +613,22 @@ static void UnitTestHTKCompare6() {
   }
 
   std::cout << "Test passed :)\n\n";
-  
+
   unlink("tmp.test.wav.fea_kaldi.6");
 }
 
-void UnitTestVtln() {
+static void UnitTestModified() {
+  MfccOptions op;
+  op.mel_opts.debug_mel = true;
+  for (int32 i = 0; i < 2; i++) {
+    if (i > 0)
+      op.mel_opts.modified = true;
+    MelBanks banks(op.mel_opts, op.frame_opts, 1.0);
+  }
+}
+
+/*
+  void UnitTestVtln() {
   // Test the function VtlnWarpFreq.
   BaseFloat low_freq = 10, high_freq = 7800,
       vtln_low_cutoff = 20, vtln_high_cutoff = 7400;
@@ -652,9 +663,10 @@ void UnitTestVtln() {
     AssertEqual(w3dash, freq3);
   }
 }
+*/
 
 static void UnitTestFeat() {
-  UnitTestVtln();
+  // UnitTestVtln();
   UnitTestReadWave();
   UnitTestSimple();
   UnitTestHTKCompare1();
@@ -666,6 +678,7 @@ static void UnitTestFeat() {
   UnitTestHTKCompare4();
   UnitTestHTKCompare5();
   UnitTestHTKCompare6();
+  UnitTestModified();
   std::cout << "Tests succeeded.\n";
 }
 
@@ -682,5 +695,3 @@ int main() {
     return 1;
   }
 }
-
-
