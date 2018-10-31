@@ -71,6 +71,8 @@ struct MelBanksOptions {
     opts->Register("vtln-high", &vtln_high,
                    "High inflection point in piecewise linear VTLN warping function"
                    " (if negative, offset from high-mel-freq");
+    opts->Register("modified", &modified,
+                   "Modified MFCCs, based on paper XXXX.  TODO: document this.");
     opts->Register("debug-mel", &debug_mel,
                    "Print out debugging information for mel bin computation");
   }
