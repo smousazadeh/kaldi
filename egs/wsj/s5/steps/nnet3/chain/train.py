@@ -571,7 +571,8 @@ def train(args, run_opts):
                 xent_regularize=args.xent_regularize,
                 run_opts=run_opts,
                 max_objective_evaluations=args.max_objective_evaluations,
-                use_multitask_egs=use_multitask_egs)
+                use_multitask_egs=use_multitask_egs,
+                combine_opts=args.combine_opts)
         else:
             logger.info("Copying the last-numbered model to final.mdl")
             common_lib.force_symlink("{0}.mdl".format(num_iters),

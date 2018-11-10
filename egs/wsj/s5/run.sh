@@ -14,9 +14,6 @@ decode=true  # set to false to disable the decoding-related scripts.
 # This is a shell script, but it's recommended that you run the commands one by
 # one by copying and pasting into the shell.
 
-#wsj0=/ais/gobi2/speech/WSJ/csr_?_senn_d?
-#wsj1=/ais/gobi2/speech/WSJ/csr_senn_d?
-
 #wsj0=/mnt/matylda2/data/WSJ0
 #wsj1=/mnt/matylda2/data/WSJ1
 
@@ -151,10 +148,10 @@ fi
 if [ $stage -le 3 ]; then
   # tri2b.  there is no special meaning in the "b"-- it's historical.
   if $train; then
-    steps/align_si.sh --nj 10 --cmd "$train_cmd" \
+    steps/align_si.sh --nj 10 --cmd "$train_cmd" --boost-silence 1.05 \
       data/train_si84 data/lang_nosp exp/tri1 exp/tri1_ali_si84 || exit 1;
 
-    steps/train_lda_mllt.sh --cmd "$train_cmd" \
+    steps/train_lda_mllt.sh --cmd "$train_cmd" --boost-silence 1.05 \
       --splice-opts "--left-context=3 --right-context=3" 2500 15000 \
       data/train_si84 data/lang_nosp exp/tri1_ali_si84 exp/tri2b || exit 1;
   fi
@@ -205,10 +202,10 @@ if [ $stage -le 4 ]; then
 
   # Align tri2b system with all the si284 data.
   if $train; then
-    steps/align_si.sh  --nj 10 --cmd "$train_cmd" \
+    steps/align_si.sh  --nj 10 --cmd "$train_cmd" --boost-silence 1.05 \
       data/train_si284 data/lang_nosp exp/tri2b exp/tri2b_ali_si284  || exit 1;
 
-    steps/train_sat.sh --cmd "$train_cmd" 4200 40000 \
+    steps/train_sat.sh --cmd "$train_cmd" --boost-silence 1.05 4200 40000 \
       data/train_si284 data/lang_nosp exp/tri2b_ali_si284 exp/tri3b || exit 1;
   fi
 
@@ -291,7 +288,7 @@ if [ $stage -le 6 ]; then
   # pronunciation and silence probabilities), train another SAT system (tri4b).
 
   if $train; then
-    steps/train_sat.sh  --cmd "$train_cmd" 4200 40000 \
+    steps/train_sat.sh  --cmd "$train_cmd" --boost-silence 1.05 4200 40000 \
       data/train_si284 data/lang exp/tri3b exp/tri4b || exit 1;
   fi
 

@@ -1209,27 +1209,29 @@ class XconfigIdctLayer(XconfigLayerBase):
 
 
 class XconfigExistingLayer(XconfigLayerBase):
-    """
-    This class is used to internally convert component-nodes in an existing
+    """This class is used to internally convert component-nodes in an existing
     model into lines like
     'existing name=tdnn1.affine dim=40'.
+    and is also now available in config files with lines like:
+    'forward-declaration name=tdnn1.affine dim=40'.
 
-    Layers of this type are not presented in any actual xconfig or config
-    files, but are created internally for all component nodes
-    in an existing neural net model to use as input to other layers in xconfig.
-    (i.e. get_model_component_info function, which is called in
-     steps/nnet3/xconfig_to_configs.py, parses the name and
-     dimension of component-nodes used in the existing model
-     using the nnet3-info and returns a list of 'existing' layers.)
+    The first form (lines starting 'existing') is used internally when using
+    the --existing-model option to the script steps/nnet3/xconfig_to_configs.py.
+    It basically makes available the component-nodes of the existing model
+    so that you can use the xconfig scripts to add to an existing model.
 
-    This class is useful in cases like transferring existing model
-    and using {input, output, component}-nodes in this model as
-    input to new layers.
+    The second form (lines starting with 'forward-declaration') may be used
+    inside xconfig files to get around the lack of direct support for recurrency
+    between xconfig layers.  You pre-declare layers that will be declared later
+    in the file.  You have to know what that layer's dimension is and what the
+    component-node at its output will be called.  (Check the code or an existing
+    config script to figure this out, it's usually something like
+    <layer-name>.batchnorm or <layer-name>.relu or someting like that).
     """
 
     def __init__(self, first_token, key_to_value, prev_names=None):
 
-        assert first_token == 'existing'
+        assert first_token  in ['existing', 'forward-declaration']
         XconfigLayerBase.__init__(self, first_token, key_to_value, prev_names)
 
 

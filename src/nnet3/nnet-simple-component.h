@@ -1182,15 +1182,21 @@ class FixedBiasComponent: public Component {
       dim               E.g. dim=1024.  Required.
       backprop-scale    Defaults to 1.0.  May be set to a different value to scale
                         the derivatives being backpropagated.
+      l2-regularize     Defaults to 0.0.  If you set this, it's the same
+                        as adding to the objective function the quantity:
+                        '-l2_regularize * |output|_2^2' (which is the same as
+                        -l2_regularize * the sum of squares of the output, or
+                        of the input).
 */
 class NoOpComponent: public Component {
  public:
-  explicit NoOpComponent(const NoOpComponent &other):
-      dim_(other.dim_), backprop_scale_(other.backprop_scale_) { }
+  // Copy constructor
+  explicit NoOpComponent(const NoOpComponent &other);
   NoOpComponent() { }
   virtual std::string Type() const { return "NoOpComponent"; }
   virtual int32 Properties() const {
-    return kSimpleComponent|kPropagateInPlace|kBackpropInPlace;
+    return kSimpleComponent|kPropagateInPlace|kBackpropInPlace|
+        (l2_regularize_ != 0.0 ? kBackpropNeedsInput : 0);
   }
   virtual int32 InputDim() const { return dim_; }
   virtual int32 OutputDim() const { return dim_; }
@@ -1205,7 +1211,7 @@ class NoOpComponent: public Component {
                           CuMatrixBase<BaseFloat> *out) const;
   virtual void Backprop(const std::string &debug_info,
                         const ComponentPrecomputedIndexes *indexes,
-                        const CuMatrixBase<BaseFloat> &, //in_value
+                        const CuMatrixBase<BaseFloat> &in_value,
                         const CuMatrixBase<BaseFloat> &, // out_value,
                         const CuMatrixBase<BaseFloat> &out_deriv,
                         void *memo,
@@ -1214,6 +1220,7 @@ class NoOpComponent: public Component {
  private:
   int32 dim_;
   BaseFloat backprop_scale_;
+  BaseFloat l2_regularize_;
 
   NoOpComponent &operator = (const NoOpComponent &other); // Disallow.
 };

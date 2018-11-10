@@ -442,7 +442,7 @@ void* NoOpComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
 
 void NoOpComponent::Backprop(const std::string &debug_info,
                              const ComponentPrecomputedIndexes *indexes,
-                             const CuMatrixBase<BaseFloat> &,
+                             const CuMatrixBase<BaseFloat> &input,
                              const CuMatrixBase<BaseFloat> &,
                              const CuMatrixBase<BaseFloat> &out_deriv,
                              void *memo,
@@ -452,11 +452,22 @@ void NoOpComponent::Backprop(const std::string &debug_info,
   in_deriv->CopyFromMat(out_deriv);
   if (backprop_scale_ != 1.0)
     in_deriv->Scale(backprop_scale_);
+  if (l2_regularize_ != 0.0) {
+    KALDI_ASSERT(SameDim(input, *in_deriv));
+    in_deriv->AddMat(-1.0 * l2_regularize_, input);
+  }
 }
+
+
+NoOpComponent::NoOpComponent(const NoOpComponent &other):
+    dim_(other.dim_), backprop_scale_(other.backprop_scale_),
+    l2_regularize_(other.l2_regularize_) { }
 
 void NoOpComponent::InitFromConfig(ConfigLine *cfl) {
   backprop_scale_ = 1.0;
   cfl->GetValue("backprop-scale", &backprop_scale_);
+  l2_regularize_ = 0.0;
+  cfl->GetValue("l2-regularize", &l2_regularize_);
   if (!cfl->GetValue("dim", &dim_) ||
       dim_ <= 0 || cfl->HasUnusedValues()) {
     KALDI_ERR << "Invalid initializer for layer of type "
@@ -469,6 +480,8 @@ std::string NoOpComponent::Info() const {
   stream << Type() << ", dim=" << dim_;
   if (backprop_scale_ != 1.0)
     stream << ", backprop-scale=" << backprop_scale_;
+  if (l2_regularize_ != 0.0)
+    stream << ", l2-regularize=" << l2_regularize_;
   return stream.str();
 }
 
@@ -478,6 +491,10 @@ void NoOpComponent::Write(std::ostream &os, bool binary) const {
   WriteBasicType(os, binary, dim_);
   WriteToken(os, binary, "<BackpropScale>");
   WriteBasicType(os, binary, backprop_scale_);
+  if (l2_regularize_ != 0.0) {
+    WriteToken(os, binary, "<L2Regularize>");
+    WriteBasicType(os, binary, l2_regularize_);
+  }
   WriteToken(os, binary, "</NoOpComponent>");
 }
 
@@ -489,6 +506,7 @@ void NoOpComponent::Read(std::istream &is, bool binary) {
     // This is the old format, from when NoOpComponent inherited from
     // NonlinearComponent.
     backprop_scale_ = 1.0;
+    l2_regularize_ = 0.0;
     ExpectToken(is, binary, "<ValueAvg>");
     CuVector<BaseFloat> temp_vec;
     temp_vec.Read(is, binary);
@@ -523,6 +541,12 @@ void NoOpComponent::Read(std::istream &is, bool binary) {
   } else {
     ExpectToken(is, binary, "<BackpropScale>");
     ReadBasicType(is, binary, &backprop_scale_);
+    if (PeekToken(is, binary) == 'L') {
+      ExpectToken(is, binary, "<L2Regularize>");
+      ReadBasicType(is, binary, &l2_regularize_);
+    } else {
+      l2_regularize_ = 0.0;
+    }
     ExpectToken(is, binary, "</NoOpComponent>");
   }
 }

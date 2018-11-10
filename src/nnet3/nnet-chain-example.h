@@ -273,6 +273,10 @@ class ChainExampleMerger {
 MapType eg_to_egs_;
 };
 
+/// This utility function removes the i-vector input from 'eg', if one was
+/// present.  It is uses if you specify to the --keep-ivector-prob option
+/// (relevant for networks which can optionally use the input i-vector).a
+void RemoveIvectorFromExample(NnetChainExample *eg);
 
 
 } // namespace nnet3

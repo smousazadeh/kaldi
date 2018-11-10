@@ -558,12 +558,13 @@ def combine_models(dir, num_iters, models_to_combine, num_chunk_per_minibatch_st
                    egs_dir, leaky_hmm_coefficient, l2_regularize,
                    xent_regularize, run_opts,
                    max_objective_evaluations=30,
-                   use_multitask_egs=False):
+                   use_multitask_egs=False,
+                   combine_opts=[]):
     """ Function to do model combination
 
     In the nnet3 setup, the logic
     for doing averaging of subsets of the models in the case where
-    there are too many models to reliably esetimate interpolation
+    there are too many models to reliably estimate interpolation
     factors (max_models_combine) is moved into the nnet3-combine.
     """
     raw_model_strings = []
@@ -599,7 +600,7 @@ def combine_models(dir, num_iters, models_to_combine, num_chunk_per_minibatch_st
 
     common_lib.execute_command(
         """{command} {combine_queue_opt} {dir}/log/combine.log \
-                nnet3-chain-combine \
+                nnet3-chain-combine {combine_opts} \
                 --max-objective-evaluations={max_objective_evaluations} \
                 --l2-regularize={l2} --leaky-hmm-coefficient={leaky} \
                 --verbose=3 {combine_gpu_opt} {dir}/den.fst {raw_models} \
@@ -613,6 +614,7 @@ def combine_models(dir, num_iters, models_to_combine, num_chunk_per_minibatch_st
                     combine_gpu_opt=run_opts.combine_gpu_opt,
                     max_objective_evaluations=max_objective_evaluations,
                     l2=l2_regularize, leaky=leaky_hmm_coefficient,
+                    combine_opts=' '.join(combine_opts),
                     dir=dir, raw_models=" ".join(raw_model_strings),
                     num_chunk_per_mb=num_chunk_per_minibatch_str,
                     num_iters=num_iters,

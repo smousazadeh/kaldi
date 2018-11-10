@@ -315,3 +315,99 @@ class XconfigPrefinalLayer(XconfigLayerBase):
                        'input={0}.linear'.format(name))
 
         return configs
+
+# This is for lines like the following:
+#
+#  force-agreement-layer name=ivector-combine input1=ivector1 input2=ivector2 weight1=0.5 l2-factor=0.001
+#
+# The output of this layer will be a weighted combination of the two inputs,
+# with weights (weight1, 1.0 - weight1) respectively; but this layer will also
+# have the effect of adding to the objective function, the value - l2-factor *
+# squared_difference, where squared_difference is the sum-square of (input1 -
+# input2), evaluated on all the frames where the output of this layer was
+# requested.  So it penalizes differences between input1 and input2.
+class XconfigForceAgreementLayer(XconfigLayerBase):
+
+    def __init__(self, first_token, key_to_value, prev_names = None):
+        assert first_token == "force-agreement-layer"
+        XconfigLayerBase.__init__(self, first_token, key_to_value, prev_names)
+
+    def set_default_configs(self):
+        self.config = {'input1':'[-1]',
+                       'input2':'[-1]',
+                       'l2-regularize':0.001,
+                       'weight1':0.5}
+
+    def get_input_descriptor_names(self):
+        return ['input1', 'input2']
+
+    def set_derived_configs(self):
+        pass
+
+    def check_configs(self):
+        input_dim1 = self.descriptors['input1']['dim']
+        input_dim2 = self.descriptors['input2']['dim']
+        if input_dim1 != input_dim2:
+            raise RuntimeError("The inputs to this layer have different "
+                               "dimensions: {0} vs. {1}".format(
+                                   input_dim1, input_dim2))
+        if (self.descriptors['input1']['final-string'] ==
+            self.descriptors['input2']['final-string']):
+            raise RuntimeError("It does not make sense to have both "
+                               "inputs to this layer be the same.")
+        if self.config['weight1'] < 0.0 or self.config['weight1'] > 1.0:
+            raise RuntimeError("weight1={0} is out of range".format(
+                self.config['weight1']))
+        if self.config['l2-regularize'] < 0.0:
+            raise RuntimeError("l2-regularize={0} is out of range".format(
+                self.config['l2-reguarlize']))
+
+    def output_name(self, auxiliary_output=None):
+        assert auxiliary_output is None
+        return ' {0}.no-op2'.format(self.name)
+
+    def output_dim(self, auxiliary_output=None):
+        return self.descriptors['input1']['dim']
+
+    def get_full_config(self):
+        ans = []
+        config_lines = self._generate_config()
+        for line in config_lines:
+            for config_name in ['ref', 'final']:
+                ans.append((config_name, line))
+        return ans
+
+
+    def _generate_config(self):
+        configs = []
+
+        name = self.name
+        dim = self.descriptors['input1']['dim']
+        input1_descriptor = self.descriptors['input1']['final-string']
+        input2_descriptor = self.descriptors['input2']['final-string']
+        weight1 = self.config['weight1']
+        weight2 = 1.0 - weight1
+        l2_regularize = self.config['l2-regularize']
+
+        configs.append('component name={0}.no-op1 type=NoOpComponent dim={1} '
+                       'l2-regularize={2}'.format(name, dim, l2_regularize))
+
+        configs.append('component-node name={0}.no-op1 component={0}.no-op1 '
+                       'input=Sum({1}, Scale(-1.0, {2}))'.format(
+                           name, input1_descriptor, input2_descriptor))
+
+        configs.append('component name={0}.no-op2 type=NoOpComponent dim={1} '
+                       ''.format(name, dim))
+
+        # The output can be written as:
+        #   weight1 * (input1 - input2)  +  (weight2 + weight1) * input2
+        # which reduces to weigh1 * input1 +  weight2 * input2.
+        # This may seem a rather circuitous way to get this expression, but
+        # the point is that we need to make sure that the no-op1 component is
+        # evaluated for all indexes at which we need the output of this
+        # component.
+        configs.append('component-node name={name}.no-op2 component={name}.no-op2 '
+                       'input=Sum(Scale({weight1}, {name}.no-op1), Scale({w}, {input2}))'.format(
+                           name=name, weight1=weight1, w=(weight2 + weight1),
+                           input2=input2_descriptor))
+        return configs

@@ -550,7 +550,14 @@ void ChainExampleMerger::Finish() {
   stats_.PrintStats();
 }
 
-
+void RemoveIvectorFromExample(NnetChainExample *eg) {
+  for (size_t i = 0; i < eg->inputs.size(); i++) {
+    if (eg->inputs[i].name == "ivector") {
+      eg->inputs.erase(eg->inputs.begin() + i);
+      break;
+    }
+  }
+}
 
 } // namespace nnet3
 } // namespace kaldi

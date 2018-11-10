@@ -6,7 +6,7 @@
 # look at the top of those files, we don't put those in the
 # RESULTS file.
 
-for dir in exp/*; do
+for dir in exp/{mono,tri}*; do
   steps/info/gmm_dir_info.pl $dir
   for x in $dir/decode*dev93* $dir/decode*eval92*; do [ -d $x ] && [[ $x =~ "$1" ]] && grep WER $x/wer_* | utils/best_wer.sh; done
 done

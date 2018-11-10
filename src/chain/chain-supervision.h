@@ -275,7 +275,6 @@ struct Supervision {
   // chunk.  [Code location TBD].
   std::vector<fst::StdVectorFst> e2e_fsts;
 
-
   // This member is only set to a nonempty value if we are creating 'unconstrained'
   // egs.  These are egs that are split into chunks using the lattice alignments,
   // but then within the chunks we remove the frame-level constraints on which

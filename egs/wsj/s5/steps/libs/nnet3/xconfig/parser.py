@@ -20,6 +20,7 @@ config_to_layer = {
         'input' : xlayers.XconfigInputLayer,
         'output' : xlayers.XconfigTrivialOutputLayer,
         'output-layer' : xlayers.XconfigOutputLayer,
+        'forward-declaration' : xlayers.XconfigExistingLayer,
         'relu-layer' : xlayers.XconfigBasicLayer,
         'relu-renorm-layer' : xlayers.XconfigBasicLayer,
         'relu-batchnorm-dropout-layer' : xlayers.XconfigBasicLayer,
@@ -73,11 +74,14 @@ config_to_layer = {
         'renorm-component': xlayers.XconfigRenormComponent,
         'batchnorm-component': xlayers.XconfigBatchnormComponent,
         'no-op-component': xlayers.XconfigNoOpComponent,
+        'circular-shift-component': xlayers.XconfigCircularShiftComponent,
         'linear-component': xlayers.XconfigLinearComponent,
         'affine-component': xlayers.XconfigAffineComponent,
         'scale-component':  xlayers.XconfigPerElementScaleComponent,
         'offset-component':  xlayers.XconfigPerElementOffsetComponent,
-        'combine-feature-maps-layer': xlayers.XconfigCombineFeatureMapsLayer
+        'combine-feature-maps-layer': xlayers.XconfigCombineFeatureMapsLayer,
+        'fixed-scale-layer': xlayers.XconfigFixedScaleComponent,
+        'force-agreement-layer': xlayers.XconfigForceAgreementLayer
 }
 
 # Turn a config line and a list of previous layers into

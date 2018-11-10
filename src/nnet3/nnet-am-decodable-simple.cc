@@ -101,7 +101,11 @@ void DecodableNnetSimple::EnsureFrameIsComputed(int32 subsampled_frame) {
     KALDI_ERR << "Neural net expects 'input' features with dimension "
               << nnet_input_dim << " but you provided "
               << feature_dim;
-  if (ivector_dim != std::max<int32>(0, nnet_.InputDim("ivector")))
+
+  // Some networks now accept i-vectors optionally so allow the case when the
+  // neural network accepts an ivector but none is provided.
+  if (ivector_dim != 0 &&
+      ivector_dim != std::max<int32>(0, nnet_.InputDim("ivector")))
     KALDI_ERR << "Neural net expects 'ivector' features with dimension "
               << nnet_ivector_dim << " but you provided " << ivector_dim;
 

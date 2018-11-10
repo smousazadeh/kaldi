@@ -873,6 +873,11 @@ class CommonParser(object):
         self.parser.add_argument("--trainer.optimization.combine-sum-to-one-penalty",
                                  type=float, dest='combine_sum_to_one_penalty', default=0.0,
                                  help="""This option is deprecated and does nothing.""")
+        self.parser.add_argument("--trainer.optimization.add-combine-option", type=str,
+                                 dest='combine_opts', action='append', default=[],
+                                 help="""You can use this to add arbitrary options that
+                                 will be passed through to nnet3-chain-combine
+                                 (does not yet work for non-chain training)""")
         self.parser.add_argument("--trainer.optimization.momentum", type=float,
                                  dest='momentum', default=0.0,
                                  help="""Momentum used in update computation.

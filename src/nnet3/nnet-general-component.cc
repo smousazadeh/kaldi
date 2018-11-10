@@ -21,6 +21,7 @@
 #include <sstream>
 #include <iomanip>
 #include "nnet3/nnet-general-component.h"
+#include "nnet3/nnet-compile-utils.h"
 #include "nnet3/nnet-computation-graph.h"
 #include "nnet3/nnet-parse.h"
 
@@ -1527,6 +1528,8 @@ std::string GeneralDropoutComponent::Info() const {
     stream << ", continuous=true";
   if (time_period_ > 0)
     stream << ", time-period=" << time_period_;
+  if (test_mode_)
+    stream << ", test-mode=true";
   return stream.str();
 }
 
@@ -1536,6 +1539,7 @@ GeneralDropoutComponent::GeneralDropoutComponent():
 
 GeneralDropoutComponent::GeneralDropoutComponent(
     const GeneralDropoutComponent &other):
+    RandomComponent(other),
     dim_(other.dim_),
     block_dim_(other.block_dim_),
     time_period_(other.time_period_),
@@ -1783,6 +1787,190 @@ void GeneralDropoutComponentPrecomputedIndexes::Read(std::istream &is,
   ExpectToken(is, binary,
               "</GeneralDropoutComponentPrecomputedIndexes>");
 }
+
+
+std::string CircularShiftComponent::Info() const {
+  std::ostringstream stream;
+  stream << Type()
+         << ", dim=" << dim_;
+  if (test_mode_)
+    stream << ", test-mode=true";
+  return stream.str();
+}
+
+CircularShiftComponent::CircularShiftComponent():
+    dim_(-1) { }
+
+CircularShiftComponent::CircularShiftComponent(
+    const CircularShiftComponent &other):
+    RandomComponent(other),
+    dim_(other.dim_) { }
+
+
+/**
+   This function does something equivalent to copying 'in' to 'out' and then
+   rotating its rows forward by 'num_rows_rotate'-- so row i of 'out' will be
+   row (i - num_rows_rotate) mod in.NumRows() of 'in'.
+   'num_rows_rotate' must be in the range [0, in.NumRows() - 1]. */
+static void RotateRowsCircularly(
+    int32 num_rows_rotate,
+    const CuMatrixBase<BaseFloat> &in,
+    CuMatrixBase<BaseFloat> *out) {
+  KALDI_ASSERT(num_rows_rotate >= 0 && num_rows_rotate < in.NumRows());
+  int32 num_rows = in.NumRows();
+  {
+    // rows 'num_rows_rotate' through 'num_rows - 1' of 'out'
+    // will be copied from rows 0 through (num_rows - num_rows_rotate) of 'in'.
+    int32 n = num_rows - num_rows_rotate;
+    out->RowRange(num_rows_rotate, n).CopyFromMat(in.RowRange(0, n));
+  }
+  if (num_rows_rotate > 0) {
+    out->RowRange(0, num_rows_rotate).CopyFromMat(in.RowRange(
+        num_rows - num_rows_rotate, num_rows_rotate));
+  }
+}
+
+void* CircularShiftComponent::Propagate(
+    const ComponentPrecomputedIndexes *indexes_in,
+    const CuMatrixBase<BaseFloat> &in,
+    CuMatrixBase<BaseFloat> *out) const {
+
+  KALDI_ASSERT(SameDim(in, *out));
+
+
+  const CircularShiftComponentPrecomputedIndexes *indexes =
+      dynamic_cast<const CircularShiftComponentPrecomputedIndexes*>(indexes_in);
+  // There will be a segfault below if 'indexes' is NULL-- would be a code
+  // error.
+
+  int32 num_t_rotate = (test_mode_ ? 0 : RandInt(0, indexes->num_t_values - 1)),
+      num_rows_rotate = indexes->num_nx_values * num_t_rotate,
+      num_rows = indexes->num_nx_values * indexes->num_t_values;
+  KALDI_ASSERT(num_rows == in.NumRows());
+
+  RotateRowsCircularly(num_rows_rotate, in, out);
+
+  // num_rows_rotate_back is the number of rows by which we'll rotate in the
+  // badkward pass.
+  int32 num_rows_rotate_back = (num_rows - num_rows_rotate) % num_rows;
+  return reinterpret_cast<void*>(static_cast<size_t>(num_rows_rotate_back));
+}
+
+
+void CircularShiftComponent::Backprop(
+    const std::string &debug_info,
+    const ComponentPrecomputedIndexes *indexes_in,
+    const CuMatrixBase<BaseFloat> &, // in_value
+    const CuMatrixBase<BaseFloat> &, // out_value
+    const CuMatrixBase<BaseFloat> &out_deriv,
+    void *memo,
+    Component *to_update,
+    CuMatrixBase<BaseFloat> *in_deriv) const {
+  KALDI_ASSERT(in_deriv != NULL && SameDim(*in_deriv, out_deriv));
+
+  int32 num_rows_rotate = static_cast<int32>(reinterpret_cast<size_t>(memo));
+  KALDI_ASSERT(num_rows_rotate >= 0 && num_rows_rotate < out_deriv.NumRows());
+
+  RotateRowsCircularly(num_rows_rotate, out_deriv, in_deriv);
+}
+
+void CircularShiftComponent::Read(std::istream &is, bool binary) {
+  ExpectOneOrTwoTokens(is, binary, "<CircularShiftComponent>", "<Dim>");
+  ReadBasicType(is, binary, &dim_);
+  if (PeekToken(is, binary) == 'T') {
+    ExpectToken(is, binary, "<TestMode>");
+    test_mode_ = true;
+  } else {
+    test_mode_ = false;
+  }
+  ExpectToken(is, binary, "</CircularShiftComponent>");
+}
+
+
+void CircularShiftComponent::Write(std::ostream &os, bool binary) const {
+  WriteToken(os, binary, "<CircularShiftComponent>");
+  WriteToken(os, binary, "<Dim>");
+  WriteBasicType(os, binary, dim_);
+  if (test_mode_)
+    WriteToken(os, binary, "<TestMode>");
+  WriteToken(os, binary, "</CircularShiftComponent>");
+}
+
+Component* CircularShiftComponent::Copy() const {
+  return new CircularShiftComponent(*this);
+}
+
+void CircularShiftComponent::InitFromConfig(ConfigLine *cfl) {
+  dim_ = 0;
+  bool ok = cfl->GetValue("dim", &dim_);
+  KALDI_ASSERT(ok && dim_ > 0);
+  test_mode_ = false;
+  cfl->GetValue("test-mode", &test_mode_);
+}
+
+
+
+ComponentPrecomputedIndexes* CircularShiftComponent::PrecomputeIndexes(
+      const MiscComputationInfo &misc_info,
+      const std::vector<Index> &input_indexes,
+      const std::vector<Index> &output_indexes,
+      bool need_backprop) const {
+  KALDI_ASSERT(input_indexes == output_indexes);
+
+  std::vector<int32> t_values;
+  GetTList(input_indexes, &t_values);
+
+  std::vector<std::pair<int32, int32> > nx_values;
+  GetNxList(input_indexes, &nx_values);
+
+  size_t num_t = t_values.size(),
+      num_nx = nx_values.size();
+
+  { // This block is just checking.
+    if (input_indexes.size() != num_t * num_nx) {
+      KALDI_ERR << "Indexes used for CircularShiftComponent do not have the "
+          "expected structure.";
+    }
+    for (size_t t = 0; t < num_t; t++) {
+      size_t j = t % num_nx;  // j can be thought of as a pseudo-random
+                              // spot-check.  We would have called Rand(), but
+                              // it interfered with how the unit tests work.
+      size_t i = t * num_nx + j;
+      if (input_indexes[i].t != t_values[t]) {
+        KALDI_ERR << "Indexes used for CircularShiftComponent do not have the "
+            "expected structure (mismatch found)";
+      }
+    }
+  }
+  CircularShiftComponentPrecomputedIndexes *ans = new
+      CircularShiftComponentPrecomputedIndexes;
+  ans->num_t_values = num_t;
+  ans->num_nx_values = num_nx;
+  return ans;
+}
+
+void CircularShiftComponentPrecomputedIndexes::Write(std::ostream &os,
+    bool binary) const {
+  WriteToken(os, binary,
+             "<CircularShiftComponentPrecomputedIndexes>");
+  WriteToken(os, binary, "<NumTnx");
+  WriteBasicType(os, binary, num_t_values);
+  WriteBasicType(os, binary, num_nx_values);
+  WriteToken(os, binary,
+             "</CircularShiftComponentPrecomputedIndexes>");
+}
+
+void CircularShiftComponentPrecomputedIndexes::Read(std::istream &is,
+    bool binary) {
+  ExpectOneOrTwoTokens(is, binary,
+                       "<CircularShiftComponentPrecomputedIndexes>",
+                       "<NumTnx>");
+  ReadBasicType(is, binary, &num_t_values);
+  ReadBasicType(is, binary, &num_nx_values);
+  ExpectToken(is, binary,
+              "</CircularShiftComponentPrecomputedIndexes>");
+}
+
 
 
 } // namespace nnet3

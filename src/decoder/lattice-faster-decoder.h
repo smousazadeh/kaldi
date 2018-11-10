@@ -131,12 +131,14 @@ struct StdToken {
   // to keep it in a good numerical range).
   BaseFloat tot_cost;
 
-  // exta_cost is >= 0.  After calling PruneForwardLinks, this equals
-  // the minimum difference between the cost of the best path, and the cost of
-  // this is on, and the cost of the absolute best path, under the assumption
-  // that any of the currently active states at the decoding front may
-  // eventually succeed (e.g. if you were to take the currently active states
-  // one by one and compute this difference, and then take the minimum).
+  // exta_cost is >= 0.  After calling PruneForwardLinks, this equals the
+  // minimum difference between the cost of the best path this arc is on, and
+  // the cost of the absolute best path, under the assumption that any of the
+  // currently active states at the decoding front (i.e. the most recent frame)
+  // may eventually succeed.  For example, you would get this if you were to
+  // take the currently active states one by one and compute the difference
+  // between the best path leading to that active state, and the best path
+  // including both this arc and that active state, and then take the minimum.
   BaseFloat extra_cost;
 
   // 'links' is the head of singly-linked list of ForwardLinks, which is what we

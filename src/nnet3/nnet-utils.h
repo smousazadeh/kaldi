@@ -187,7 +187,6 @@ void SetBatchnormTestMode(bool test_mode, Nnet *nnet);
 void RecomputeStats(const std::vector<NnetExample> &egs, Nnet *nnet);
 
 
-
 /// This function affects components of child-classes of
 /// RandomComponent.
 /// It sets "test mode" on such components (if you call it with test_mode =
@@ -195,6 +194,7 @@ void RecomputeStats(const std::vector<NnetExample> &egs, Nnet *nnet);
 /// "test mode" means that having a mask containing (1-dropout_prob) in all
 /// elements.
 void SetDropoutTestMode(bool test_mode, Nnet *nnet);
+
 
 /**
   \brief  This function calls 'ResetGenerator()' on all components in 'nnet'

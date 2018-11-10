@@ -21,7 +21,7 @@ class XconfigStatsLayer(XconfigLayerBase):
     on multiples of 3 frames (so this will force the input to this layer to be
     evaluated every 3 frames).  Another example string is
     'mean+stddev(-99:3:9:99)', which will also cause the standard deviation to
-    be computed.
+    be computed.  'mean', 'mean+count' and 'mean+stddev+count' are also supported.
 
     The dimension is worked out from the input. mean and stddev add a
     dimension of input_dim each to the output dimension. If counts is

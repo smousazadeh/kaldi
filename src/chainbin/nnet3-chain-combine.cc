@@ -105,6 +105,7 @@ int main(int argc, char *argv[]) {
     bool batchnorm_test_mode = false,
         dropout_test_mode = true;
     std::string use_gpu = "yes";
+    BaseFloat keep_ivector_prob = 1.0;
     chain::ChainTrainingOptions chain_config;
 
     ParseOptions po(usage);
@@ -113,9 +114,14 @@ int main(int argc, char *argv[]) {
                 "maximum number of objective evaluations in order to figure "
                 "out the best number of models to combine. It helps to speedup "
                 "if the number of models provided to this binary is quite "
-                "large (e.g. several hundred)."); 
+                "large (e.g. several hundred).");
     po.Register("use-gpu", &use_gpu,
                 "yes|no|optional|wait, only has effect if compiled with CUDA");
+    po.Register("keep-ivector-prob",
+                &keep_ivector_prob,
+                "(Only relevant if ivectors are supplied, but may be "
+                "used optionally within the network)... The probability "
+                "with which we use the i-vector (decided per minibatch)");
     po.Register("batchnorm-test-mode", &batchnorm_test_mode,
                 "If true, set test-mode to true on any BatchNormComponents "
                 "while evaluating objectives.");
@@ -160,8 +166,11 @@ int main(int argc, char *argv[]) {
     { // This block adds training examples to "egs".
       SequentialNnetChainExampleReader example_reader(
           valid_examples_rspecifier);
-      for (; !example_reader.Done(); example_reader.Next())
+      for (; !example_reader.Done(); example_reader.Next()) {
+        if (RandUniform() > keep_ivector_prob)
+          RemoveIvectorFromExample(&(example_reader.Value()));
         egs.push_back(example_reader.Value());
+      }
       KALDI_LOG << "Read " << egs.size() << " examples.";
       KALDI_ASSERT(!egs.empty());
     }

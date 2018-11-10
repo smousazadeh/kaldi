@@ -70,6 +70,8 @@ ComponentPrecomputedIndexes* ComponentPrecomputedIndexes::NewComponentPrecompute
     ans = new GeneralDropoutComponentPrecomputedIndexes();
   } else if (cpi_type == "TdnnComponentPrecomputedIndexes") {
     ans = new TdnnComponent::PrecomputedIndexes();
+  } else if (cpi_type == "CircularShiftComponentPrecomputedIndexes") {
+    ans = new CircularShiftComponentPrecomputedIndexes();
   }
   if (ans != NULL) {
     KALDI_ASSERT(cpi_type == ans->Type());
@@ -180,6 +182,8 @@ Component* Component::NewComponentOfType(const std::string &component_type) {
     ans = new SumBlockComponent();
   } else if (component_type == "ScaleAndOffsetComponent") {
     ans = new ScaleAndOffsetComponent();
+  } else if (component_type == "CircularShiftComponent") {
+    ans = new CircularShiftComponent();
   }
   if (ans != NULL) {
     KALDI_ASSERT(component_type == ans->Type());

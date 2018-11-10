@@ -44,6 +44,7 @@ int main(int argc, char *argv[]) {
     int32 srand_seed = 0;
     bool binary_write = true;
     std::string use_gpu = "yes";
+    BaseFloat keep_ivector_prob = 1.0;
     NnetChainTrainingOptions opts;
 
     ParseOptions po(usage);
@@ -51,6 +52,12 @@ int main(int argc, char *argv[]) {
     po.Register("binary", &binary_write, "Write output in binary mode");
     po.Register("use-gpu", &use_gpu,
                 "yes|no|optional|wait, only has effect if compiled with CUDA");
+    po.Register("keep-ivector-prob",
+                &keep_ivector_prob,
+                "(Only relevant if ivectors are supplied, but may be "
+                "used optionally within the network)... The probability "
+                "with which we use the i-vector (decided per minibatch)");
+
 
     opts.Register(&po);
     RegisterCuAllocatorOptions(&po);
@@ -86,8 +93,11 @@ int main(int argc, char *argv[]) {
 
       SequentialNnetChainExampleReader example_reader(examples_rspecifier);
 
-      for (; !example_reader.Done(); example_reader.Next())
+      for (; !example_reader.Done(); example_reader.Next()) {
+        if (RandUniform() > keep_ivector_prob)
+          RemoveIvectorFromExample(&(example_reader.Value()));
         trainer.Train(example_reader.Value());
+      }
 
       ok = trainer.PrintTotalStats();
     }

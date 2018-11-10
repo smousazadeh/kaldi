@@ -312,26 +312,45 @@ class StatisticsExtractionComponentPrecomputedIndexes:
   StatisticsPoolingComponent pools the stats over a specified window and
   computes means and possibly log-count and stddevs from them for you.
 
- # In StatisticsPoolingComponent, the first element of the input is interpreted
- # as a count, which we divide by.
- # Optionally the log of the count can be output, and you can allow it to be
- # repeated several times if you want (useful for systems using the jesus-layer).
- # The output dimension is equal to num-log-count-features plus (input-dim - 1).
+  input-period=1   The period at which this component should request its input,
+                e.g. if this is 10, then the input will be evaluated at multiples
+                of t=10.  Acctually, the output is expected to be evaluated
+                as the same multiples, so if input-period=10, the output will
+                not be defined at t=9, regardless of the inputs.  You should
+                use Round() in descriptors to access the output only at the
+                appropriate multiples of t.
 
- # If include-log-count==false, the output dimension is the input dimension minus one.
- # If output-stddevs=true, then it expects the input-dim to be of the form 2n+1 where n is
- #  presumably the original feature dim, and it interprets the last n dimensions of the feature
- #  as a variance; it outputs the square root of the variance instead of the actual variance.
+  input-dim    The dimension of the input statistics.  Let the features we're
+               computing statistics over be feature-dim.  Then input-dim will be
+               equal to: feature-dim + 1, if output-stddevs=false, otherwise 2 *
+               feature-dim + 1.  feature-dim is the dimension of the thing we're
+               computing statistics (means, per-dim stddevs) over.  The 1 is
+               for the count.
+               The output dimension will equal feature-dim plus (feature-dim if
+               output-stddevs==true, else 0) plus num-log-count-features.
 
- configs and their defaults:  input-dim=-1, input-period=1, left-context=-1, right-context=-1,
-    num-log-count-features=0, output-stddevs=true, variance-floor=1.0e-10
+   left-context,right-context  The amount of left-context and right-context used
+               when pooling statistics.  Must be a multiple of input-period; may be zero.
+               E.g. if left-context=30, right=context=20 and input-period=10, and
+               we're computing an output for t=100, the stats at frames 70, 80,
+               90, 100, 110 and 120 will be summed when computing statistics.
 
- You'd access the output of the StatisticsPoolingComponent using rounding, e.g.
-  Round(component-name, 10)
- or whatever, instead of just component-name, because its output is only defined at multiples
- of its input-period.
+   num-log-count-features   Will normally be zero or 1; if more than one, the log
+               of the data-count will be output multiple times.
 
- The output of StatisticsPoolingComponent will only be defined if at least one input was defined.
+   output-stddevs=false  If true, the standard deviation of the input features
+               will be output, as well as the mean.
+
+   variance-floor   Only relevant when computing standard deviation features:
+               a floor on the variance, so the output standard deviation will
+               be no less than the square root of this.
+
+ Remember: you'd access the output of the StatisticsPoolingComponent using
+ rounding, e.g.  Round(component-name, 10), instead of just component-name,
+ because its output is only defined at multiples of its input-period.
+
+ The output of StatisticsPoolingComponent will only be defined if at least one
+ input was defined.
  */
 class StatisticsPoolingComponent: public Component {
  public:
@@ -948,6 +967,118 @@ class GeneralDropoutComponentPrecomputedIndexes:
 
   virtual std::string Type() const {
     return "GeneralDropoutComponentPrecomputedIndexes";
+  }
+};
+
+
+
+/**
+   CircularShiftComponent implements a random rotation among the
+   't' values present.  Assume for a certain 'n,x' pair, there are
+   a certain set of 't' values.  Sort them and then circularly
+   permute them by a random shift.  That is what this class implements.
+   The current implementation requires that the set of indexes present
+   be representable as a product over a set of 'n,x' values and a
+   set of 't' values, i.e. the same set of 't' values must be present
+   for each 'n,x' pair.
+
+   This is useful during training, in cases where you want the layer before this
+   one to learn something generic (like speaker characteristics) instead of
+   something time-specific.  You would probably call SetTestMode(true) on this
+   in test time (it's inherited from class RandomComponent) which makes its
+   behavior deterministic, i.e. it would not do the random shift.
+
+   The random rotation is decided per minibatch.  Say there are
+   100 't' values (e.g. 100 distinct frames per sequence), then
+   there are 100 choices for the rotation.
+ */
+class CircularShiftComponent: public RandomComponent {
+ public:
+  virtual int32 InputDim() const { return dim_; }
+
+  virtual int32 OutputDim() const { return dim_; }
+
+  virtual std::string Info() const;
+
+  virtual void InitFromConfig(ConfigLine *cfl);
+
+  CircularShiftComponent();
+
+  CircularShiftComponent(const CircularShiftComponent &other);
+
+  virtual std::string Type() const { return "CircularShiftComponent"; }
+  virtual int32 Properties() const {
+    return kRandomComponent|kUsesMemo;
+  }
+
+  // the 'memo' returned will actually be the integer shift, a number >= 0,
+  // which is cast to void*.  This is interpretable as a number of rows by which
+  // we rotated the matrix in the forward propagation.
+  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                          const CuMatrixBase<BaseFloat> &in,
+                          CuMatrixBase<BaseFloat> *out) const;
+
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &, // in_value
+                        const CuMatrixBase<BaseFloat> &, // out_value
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        void *memo,
+                        Component *to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+
+  // memo is just an int cast to void*, it's not really a pointer.  It's
+  // the number of rows that we have to rotate forward in the backward
+  // pass.
+  virtual void DeleteMemo(void *memo) const { }
+
+  virtual ComponentPrecomputedIndexes* PrecomputeIndexes(
+      const MiscComputationInfo &misc_info,
+      const std::vector<Index> &input_indexes,
+      const std::vector<Index> &output_indexes,
+      bool need_backprop) const;
+
+  virtual void Read(std::istream &is, bool binary);
+  virtual void Write(std::ostream &os, bool binary) const;
+
+  virtual Component* Copy() const;
+
+ private:
+
+  // The input and output dimension
+  int32 dim_;
+
+  const CircularShiftComponent &operator
+  = (const CircularShiftComponent &other); // Disallow.
+};
+
+// This stores some precomputed indexes for CircularShiftComponent.
+// This object is created for every instance of the Propagate()
+// function in the compiled computation.
+class CircularShiftComponentPrecomputedIndexes:
+      public ComponentPrecomputedIndexes {
+ public:
+
+  // the number of distinct 't' values.  The input indexes are required to
+  // be in the order given by operator < of Index (and to be decomposable over
+  // 't' and 'n, x')... this means the 't' has the highest stride.
+  int32 num_t_values;
+
+  // the number of distinct (n, x) pairs.
+  int32 num_nx_values;
+
+  virtual ~CircularShiftComponentPrecomputedIndexes() { }
+
+  ComponentPrecomputedIndexes *Copy() const {
+    return new CircularShiftComponentPrecomputedIndexes(*this);
+  }
+
+  virtual void Write(std::ostream &os, bool binary) const;
+
+  virtual void Read(std::istream &is, bool binary);
+
+  virtual std::string Type() const {
+    return "CircularShiftComponentPrecomputedIndexes";
   }
 };
 

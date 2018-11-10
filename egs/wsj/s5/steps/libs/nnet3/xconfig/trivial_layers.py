@@ -178,6 +178,60 @@ class XconfigNoOpComponent(XconfigLayerBase):
         configs.append(line)
         return configs
 
+class XconfigCircularShiftComponent(XconfigLayerBase):
+    """This class is for parsing lines like
+     'circular-shift-component name=shift1 input=foo'
+    which will produce just a single component, of type CircularShiftComponent.
+    This rotates the 't' values randomly-- it's intended for cases where we
+    want to learn speaker characteristics but not the local time dynamics.
+
+    Parameters of the class, and their defaults:
+      input='[-1]'             [Descriptor giving the input of the layer.]
+    """
+    def __init__(self, first_token, key_to_value, prev_names=None):
+        XconfigLayerBase.__init__(self, first_token, key_to_value, prev_names)
+
+    def set_default_configs(self):
+        self.config = {'input': '[-1]' }
+
+    def check_configs(self):
+        pass
+
+    def output_name(self, auxiliary_output=None):
+        assert auxiliary_output is None
+        return self.name
+
+    def output_dim(self, auxiliary_output=None):
+        assert auxiliary_output is None
+        input_dim = self.descriptors['input']['dim']
+        return input_dim
+
+    def get_full_config(self):
+        ans = []
+        config_lines = self._generate_config()
+
+        for line in config_lines:
+            for config_name in ['ref', 'final']:
+                # we do not support user specified matrices in this layer
+                # so 'ref' and 'final' configs are the same.
+                ans.append((config_name, line))
+        return ans
+
+    def _generate_config(self):
+        # by 'descriptor_final_string' we mean a string that can appear in
+        # config-files, i.e. it contains the 'final' names of nodes.
+        input_desc = self.descriptors['input']['final-string']
+        input_dim = self.descriptors['input']['dim']
+
+        configs = []
+        line = ('component name={0} type=CircularShiftComponent dim={1}'.format(
+            self.name, input_dim))
+        configs.append(line)
+        line = ('component-node name={0} component={0} input={1}'.format(
+            self.name, input_desc))
+        configs.append(line)
+        return configs
+
 
 class XconfigLinearComponent(XconfigLayerBase):
     """This class is for parsing lines like
@@ -506,6 +560,76 @@ class XconfigPerElementScaleComponent(XconfigLayerBase):
             self.name, input_desc))
         configs.append(line)
         return configs
+
+
+class XconfigFixedScaleComponent(XconfigLayerBase):
+    """This class is for parsing lines like
+
+     'fixed-scale-layer name=scale input=foo scale-vector-file=foo/bar/scales.vec'
+
+    This is a scale (i.e. a per-dimension scale, like multiplying by a diagonal matrix).
+    If you want a fixed scale you can do it with Descriptors, like Scale(2.0, foo); this
+    component is for when the scale varies by dimension.  Please note: it is the
+    responsibility of the person creating the xconfig file to write to the vector, for
+    example, creating the file foo/bar/scales.vec
+
+    Parameters of the class, and their defaults:
+      input='[-1]'             [Descriptor giving the input of the layer.]
+      scale-vector-file        [Filename, readable as a Kaldi 'Vector', e.g. containing
+                                text like:  '[ 0.1, 0.2 ]'.   ]
+    """
+    def __init__(self, first_token, key_to_value, prev_names=None):
+        XconfigLayerBase.__init__(self, first_token, key_to_value, prev_names)
+
+    def set_default_configs(self):
+        self.config = {'input': '[-1]',
+                       'scale-vector-file': '' }
+
+    def check_configs(self):
+        filename = self.config['scale-vector-file']
+        if filename == '':
+            raise RuntimeError("scale-vector-file must be specified.")
+        try:
+            with open(filename) as f:
+                pass
+        except:
+            raise RuntimeError("The file {0} specified as scale-vector-file does not exist".format(f))
+
+
+    def output_name(self, auxiliary_output=None):
+        assert auxiliary_output is None
+        return self.name
+
+    def output_dim(self, auxiliary_output=None):
+        assert auxiliary_output is None
+        return self.descriptors['input']['dim']
+
+    def get_full_config(self):
+        ans = []
+        config_lines = self._generate_config()
+
+        for line in config_lines:
+            for config_name in ['ref', 'final']:
+                # we do not support user specified matrices in this layer
+                # so 'ref' and 'final' configs are the same.
+                ans.append((config_name, line))
+        return ans
+
+    def _generate_config(self):
+        # by 'descriptor_final_string' we mean a string that can appear in
+        # config-files, i.e. it contains the 'final' names of nodes.
+        input_desc = self.descriptors['input']['final-string']
+        filename = self.config['scale-vector-file']
+
+        configs = []
+        line = ('component name={0} type=FixedScaleComponent scales={1} '
+                ''.format(self.name, filename))
+        configs.append(line)
+        line = ('component-node name={0} component={0} input={1}'.format(
+            self.name, input_desc))
+        configs.append(line)
+        return configs
+
 
 class XconfigPerElementOffsetComponent(XconfigLayerBase):
     """This class is for parsing lines like
