@@ -17,7 +17,6 @@
 // See the Apache 2 License for the specific language governing permissions and
 // limitations under the License.
 
-#include <iomanip>
 #include "nnet3/nnet-nnet.h"
 #include "nnet3/nnet-simple-component.h"
 #include "nnet3/nnet-test-utils.h"
