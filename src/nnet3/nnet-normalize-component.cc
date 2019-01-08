@@ -691,8 +691,8 @@ void MeanNormComponent::Check() const {
   KALDI_ASSERT(dim_ > 0 && block_dim_ > 0 && dim_ % block_dim_ == 0 &&
                backprop_normalize_scale_ >= 0.0 &&
                backprop_normalize_scale_ <= 1.0 &&
-               count_ >= 0 && stats_sum_.Dim() == dim_ &&
-               offset_.Dim() == dim_);
+               count_ >= 0 && stats_sum_.Dim() == block_dim_ &&
+               offset_.Dim() == block_dim_);
 }
 
 std::string MeanNormComponent::Info() const {
@@ -784,27 +784,24 @@ void MeanNormComponent::Backprop(
     Component *to_update,  // unused
     CuMatrixBase<BaseFloat> *in_deriv) const {
 
-  KALDI_ASSERT(SameDim(out_value, out_deriv) &&
-               SameDim(out_value, *in_deriv) &&
-               (out_value.NumCols() == dim_ ||
-                out_value.NumCols() == block_dim_));
-  if (out_value.NumCols() != block_dim_) {
+  KALDI_ASSERT(SameDim(out_deriv, *in_deriv) &&
+               (out_deriv.NumCols() == dim_ ||
+                out_deriv.NumCols() == block_dim_));
+  if (out_deriv.NumCols() != block_dim_) {
     // if block_dim_ != dim_, we recurse; this helps keep the main code
     // simple.
-    KALDI_ASSERT(out_value.Stride() == out_value.NumCols() &&
-                 out_deriv.Stride() == out_deriv.NumCols() &&
+    KALDI_ASSERT(out_deriv.Stride() == out_deriv.NumCols() &&
                  in_deriv->Stride() == in_deriv->NumCols());
     int32 ratio = dim_ / block_dim_,
-        orig_rows = out_value.NumRows(),
-        orig_cols = out_value.NumCols(),
+        orig_rows = out_deriv.NumRows(),
+        orig_cols = out_deriv.NumCols(),
         new_rows = orig_rows * ratio, new_cols = orig_cols / ratio;
-    CuSubMatrix<BaseFloat> out_value_reshaped(out_value.Data(), new_rows,
-                                              new_cols, new_cols),
+    CuSubMatrix<BaseFloat>
         out_deriv_reshaped(out_deriv.Data(), new_rows, new_cols, new_cols),
         in_deriv_reshaped(in_deriv->Data(), new_rows, new_cols, new_cols);
-    // we'll never use in_value, so pass it in unchanged.
+    // we'll never use in_value or out_value, so pass them in unchanged.
     Backprop(debug_info, indexes, in_value,
-             out_value_reshaped, out_deriv_reshaped,
+             out_value, out_deriv_reshaped,
              memo_in, to_update, &in_deriv_reshaped);
     return;
   }
@@ -825,8 +822,6 @@ void MeanNormComponent::Backprop(
   // See comment above declaration of class in nnet-normalize-component.h
   // for the math.
   KALDI_ASSERT(memo != NULL && "memo not passed into backprop");
-  int32 num_frames = memo->num_frames;
-  KALDI_ASSERT(out_value.NumRows() == num_frames);
   CuSubVector<BaseFloat> deriv_offset(memo->sum_offset_temp, 2);
 
   // set deriv_offset to
@@ -954,9 +949,9 @@ void VarNormComponent::Check() const {
   KALDI_ASSERT(dim_ > 0 && block_dim_ > 0 && dim_ % block_dim_ == 0 &&
                epsilon_ > 0.0 &&
                count_ >= 0 && r_count_ >= 0.0 &&
-               stats_sumsq_.Dim() == dim_ &&
-               scale_.Dim() == dim_ &&
-               r_sum_.Dim() == dim_);
+               stats_sumsq_.Dim() == block_dim_ &&
+               scale_.Dim() == block_dim_ &&
+               r_sum_.Dim() == block_dim_);
 }
 
 std::string VarNormComponent::Info() const {
