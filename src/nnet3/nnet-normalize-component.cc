@@ -1109,12 +1109,14 @@ void VarNormComponent::Backprop(
       r_sum.MulElements(scale);
       BaseFloat tot_count = this->r_count_ + memo->num_frames;
       in_deriv->CopyFromMat(out_deriv);
+      in_deriv->MulColsVec(scale_);
       in_deriv->AddMatDiagVec(-1.0 / tot_count, out_value, kNoTrans, r_sum);
     } else {
       r_sum.MulElements(scale);
       // the following statement does no work if in_deriv and out_deriv are the
       // same matrix.
       in_deriv->CopyFromMat(out_deriv);
+      in_deriv->MulColsVec(scale_);
       in_deriv->AddMatDiagVec(-1.0 / memo->num_frames, out_value, kNoTrans, r_sum);
     }
   }
