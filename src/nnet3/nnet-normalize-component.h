@@ -485,14 +485,24 @@ class MeanNormComponent: public Component {
 
    The formula above for r is the one that ensures that:
           \sum_i \hat{x}_i y_i  = 0
-         (which is the same as saying: \sum_i \hat{x}_i y_i  = 0).
    which is the condition where the output is insensitive to a scaling of the
    input.  This is kind of an approximation to what we really want; it would
    be more ideal to accumulate a version of 'r' that was an average over many
    minibatches, and use that.  We can have an option average_r to
    allow time-averaging of r.
 
-   To simplify the formula for r, we can make the approximation that
+   We can derive the formula for r as follows.  First replace \hat{x}_i with \hat{y}_i,
+    since the expression differs only by a positive scalar 'scale', and \hat{y}_i
+    ends up being more convenient:
+          \sum_i \hat{x}_i y_i  = 0
+
+          \sum_i (scale * \hat{y}_i - r * y_i) * y_i = 0
+          \sum_i scale * \hat{y}_i * y_i - r * y_i^2 = 0
+          \sum_i scale * \hat{y}_i * y_i  = r * \sum_i y_i^2
+           r :=   scale * (\sum_i \hat{y}_i * y_i) / (\sum_i y_i^2)
+              \simeq  scale * (\sum_i \hat{y}_i * y_i) / n
+
+   Note: to simplify the formula for r, we make the approximation that
    (\sum_{i=1}^n y_i^2) == n, which it is, almost, except when the input size is
    comparable to epsilon_ or smaller (and we don't really care about this term
    in that pathological case anyway-- this term's function is to prevent blowup
