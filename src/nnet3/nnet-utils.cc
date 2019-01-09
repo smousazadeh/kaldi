@@ -566,6 +566,13 @@ void SetBatchnormTestMode(bool test_mode,  Nnet *nnet) {
     BatchNormComponent *bc = dynamic_cast<BatchNormComponent*>(comp);
     if (bc != NULL)
       bc->SetTestMode(test_mode);
+    MeanNormComponent *mc = dynamic_cast<MeanNormComponent*>(comp);
+    if (mc != NULL)
+      mc->SetTestMode(test_mode);
+    VarNormComponent *vc = dynamic_cast<VarNormComponent*>(comp);
+    if (vc != NULL)
+      vc->SetTestMode(test_mode);
+
   }
 }
 

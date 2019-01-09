@@ -1029,10 +1029,10 @@ void* VarNormComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
     memo->sumsq_scale_temp.Resize(3, dim);
     CuSubVector<BaseFloat> sumsq(memo->sumsq_scale_temp, 0),
         scale(memo->sumsq_scale_temp, 1);
-    sumsq.AddDiagMat2(1.0, in, kTrans, 0.);
+    sumsq.AddDiagMat2(1.0, in, kTrans, 0.0);
     scale.CopyFromVec(sumsq);
-    scale.Add(epsilon_);
     scale.AddVec(1.0, stats_sumsq_);
+    scale.Add((num_frames + count_) * epsilon_);
     scale.Scale(1.0 / (num_frames + count_));
     scale.ApplyPow(-0.5);
     // the next command will do no work if out == in, for in-place propagation.
@@ -1095,7 +1095,7 @@ void VarNormComponent::Backprop(
         r_sum(memo->sumsq_scale_temp, 2);
 
     // We're computing:
-    // r :=  (1/scale) * (\sum_{i=1}^n \hat{y}_i y_i)
+    // r :=  scale * (\sum_{i=1}^n \hat{y}_i y_i)
     // (the real r is this divided by n).
     r_sum.AddDiagMatMat(1.0, out_deriv, kTrans, out_value, kNoTrans, 0.0);
 
@@ -1154,6 +1154,7 @@ void VarNormComponent::StoreStats(
   scale_.CopyFromVec(stats_sumsq_);
   scale_.Add(count_ * epsilon_);
   scale_.Scale(1.0 / count_);
+  scale_.ApplyPow(-0.5);
 }
 
 void VarNormComponent::Read(std::istream &is, bool binary) {
