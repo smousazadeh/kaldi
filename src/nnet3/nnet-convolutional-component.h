@@ -560,7 +560,7 @@ class TdnnComponent: public UpdatableComponent {
   BaseFloat OrthonormalConstraint() const { return orthonormal_constraint_; }
 
   void ConsolidateMemory() override;
- private:
+ protected:
 
   /**
      This is a piece of the function InitFromConfig() that is broken out and
@@ -688,7 +688,7 @@ class TdnnComponent: public UpdatableComponent {
 
       output-block-dim      The number of rows of each block of linear_params_
                             (must divide output-dim).  Each block, which is a
-                            matrix, is obtained as a product of block_params_
+                            matrix, is obtained as a product of block_basis_
                             with a vector of size params-per-block specific to
                             that block.
       input-block-dim       The number of columns of each block of linear_params_
@@ -722,7 +722,7 @@ class TdnnComponent: public UpdatableComponent {
 
      orthonormal-constraint=0.0  You can set this to -1 to enable a 'floating'
                       orthonormal constraint on both parameters
-                      reduced_linear_params_ and block_params_.  Will help
+                      reduced_linear_params_ and block_basis_.  Will help
                       stability a lot.  (Values >0 are also possible but not
                       recommended).
 
@@ -774,11 +774,11 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
 
   // These members are specific to this class.
   CuMatrixBase<BaseFloat> &ReducedLinearParams() { return reduced_linear_params_; }
-  CuMatrixBase<BaseFloat> &BlockParams() { return block_params_; }
+  CuMatrixBase<BaseFloat> &BlockParams() { return block_basis_; }
 
  private:
 
-  void Check();
+  void Check() const;
 
   // This function, called from TdnnComponent::InitFromConfig(),
   // reads the configuration values:
@@ -793,22 +793,22 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
 
   // This function computes the elements of linear_params_ (the base-class's
   // member object) from the class members reduced_linear_params_ and
-  // block_params_.
+  // block_basis_.
   // It requires linear_params_ to already be correctly sized.
   void ComputeLinearParams();
 
   // Returns the num-cols of each block of parameters in linear_params_.
-  inline int32 InputBlockDim() {
+  inline int32 InputBlockDim() const {
     return linear_params_.NumCols() / NumInputBlocks();
   }
   // Returns the num-rows of each block of parameters in linear_params_.
-  inline int32 OutputBlockDim() {
+  inline int32 OutputBlockDim() const {
     return linear_params_.NumRows() / reduced_linear_params_.NumRows();
   }
   // Returns the number of parameters we allocate per block of parameters; would
   // normally be substantially less than InputBlockDim() * OutputBlockDim().
-  inline int32 ParamsPerBlock() { return block_params_.NumCols(); }
-  inline int32 NumInputBlocks() {
+  inline int32 ParamsPerBlock() const { return block_basis_.NumCols(); }
+  inline int32 NumInputBlocks() const {
     return reduced_linear_params_.NumCols() / ParamsPerBlock();
   }
   inline int32 NumOutputBlocks() { return reduced_linear_params_.NumRows(); }
@@ -833,7 +833,7 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
 
 
   // This function creates the 'intermediate' form of the parameters from
-  // reduced_linear_params_ and block_basiss_; intermediate_params
+  // reduced_linear_params_ and block_basis_; intermediate_params
   // should have dimension
   // which is a matrix of dimension
   //        NumOutputBlocks()  by
@@ -857,7 +857,7 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
   CuArray<int32> to_intermediate_indexes_;
 
 
-  // reduced_linear_params_ and block_params_ are the 'real' parameters
+  // reduced_linear_params_ and block_basis_ are the 'real' parameters
   // underlying linear_params_.
 
   // reduced_linear_params_ is of dimension NumOutputBlocks() by

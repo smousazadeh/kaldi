@@ -713,13 +713,13 @@ BlockFactorizedTdnnComponent::BlockFactorizedTdnnComponent(
     TdnnComponent(other),
     to_standard_indexes_(other.to_standard_indexes_),
     to_intermediate_indexes_(other.to_intermediate_indexes_),
-    block_params_(other.block_params_) {
+    block_basis_(other.block_basis_) {
   // We need to keep reduced_linear_params_ in contiguous storage.
   reduced_linear_params_.Resize(other.reduced_linear_params_.NumRows(),
                                 other.reduced_linear_params_.NumCols(),
                                 kUndefined,
                                 kStrideEqualNumCols);
-  reducd_linear_params_.CopyFromMat(other.reduced_linear_params_);
+  reduced_linear_params_.CopyFromMat(other.reduced_linear_params_);
 }
 
 std::string BlockFactorizedTdnnComponent::Info() const {
@@ -736,7 +736,7 @@ std::string BlockFactorizedTdnnComponent::Info() const {
                       true, // include_column_norms
                       GetVerboseLevel() >= 2); // include_singular_values
   PrintParameterStats(stream, "block-params",
-                      block_params_,
+                      block_basis_,
                       false, // include_mean
                       true, // include_row_norms
                       true, // include_column_norms
@@ -748,7 +748,7 @@ std::string BlockFactorizedTdnnComponent::Info() const {
    Suppose in the final matrix (linear_params_) we want a certain
    user-specified parameter standard deviation (param-stddev).
    We want to figure out what variances the reduced_linear_params_
-   and block_params_ need to have to achieve this (and we need
+   and block_basis_ need to have to achieve this (and we need
    to determine their relative magnitudes in a sensible way).
 
    Let us consider a single block of parameters, of dimension
@@ -834,15 +834,14 @@ void BlockFactorizedTdnnComponent::InitLinearParams(
     int32 num_cols,
     ConfigLine *cfl) {
   BaseFloat param_stddev = -1;
-  BaseFloat param_stddev;
   cfl->GetValue("param-stddev", &param_stddev);
 
   int32 input_block_dim = -1, output_block_dim = -1,
        params_per_block = -1;
 
-  ok = cfl->GetValue("input-block-dim", &input_block_dim) &&
-       cfl->GetValue("output-block-dim", &input_block_dim) &&
-       cfl->GetValue("params-per-block", &params_per_block);
+  bool ok = cfl->GetValue("input-block-dim", &input_block_dim) &&
+      cfl->GetValue("output-block-dim", &input_block_dim) &&
+      cfl->GetValue("params-per-block", &params_per_block);
   if (!ok || num_cols % input_block_dim != 0 ||
       num_rows % output_block_dim != 0 ||
       params_per_block <= 0)
@@ -903,7 +902,7 @@ void BlockFactorizedTdnnComponent::Write(std::ostream &os, bool binary) const {
   WriteToken(os, binary, "<TimeOffsets>");
   WriteIntegerVector(os, binary, time_offsets_);
   WriteToken(os, binary, "<LinearParamsReduced>");
-  linear_params_reduced_.Write(os, binary);
+  reduced_linear_params_.Write(os, binary);
   WriteToken(os, binary, "<BlockBasis>");
   block_basis_.Write(os, binary);
   WriteToken(os, binary, "<BiasParams>");
@@ -943,18 +942,18 @@ void BlockFactorizedTdnnComponent::Read(std::istream &is, bool binary) {
   ExpectToken(is, binary, "<TimeOffsets>");
   ReadIntegerVector(is, binary, &time_offsets_);
   ExpectToken(is, binary, "<LinearParamsReduced>");
-  ReadWithStrideEqualNumCols(is, binary,  &linear_params_reduced_);
+  ReadWithStrideEqualNumCols(is, binary,  &reduced_linear_params_);
   ExpectToken(is, binary, "<BlockBasis>");
   block_basis_.Read(is, binary);
   // We can work out all the other dimensions if we know either input-block-dim or
   // output-block-dim; we read input-block-dim.
   int32 input_block_dim;
   ExpectToken(is, binary, "<InputBlockDim>");
-  ReadBasicType(is, binary, &input_block_dim_);
+  ReadBasicType(is, binary, &input_block_dim);
   int32 output_block_dim = block_basis_.NumRows() / input_block_dim,
         params_per_block = block_basis_.NumCols(),
-        num_input_blocks = linear_params_reduced_.NumCols() / params_per_block,
-       num_output_blocks = linear_params_reduced_.NumRows();
+        num_input_blocks = reduced_linear_params_.NumCols() / params_per_block,
+       num_output_blocks = reduced_linear_params_.NumRows();
   linear_params_.Resize(num_output_blocks * output_block_dim,
                         num_input_blocks * input_block_dim,
                         kUndefined);
@@ -992,12 +991,12 @@ void BlockFactorizedTdnnComponent::Read(std::istream &is, bool binary) {
 void BlockFactorizedTdnnComponent::Scale(BaseFloat scale) {
   if (scale == 0.0) {
     linear_params_.SetZero();
-    linear_params_reduced_.SetZero();
+    reduced_linear_params_.SetZero();
     block_basis_.SetZero();
     bias_params_.SetZero();
   } else {
     linear_params_.Scale(scale * scale);
-    linear_params_reduced_.Scale(scale);
+    reduced_linear_params_.Scale(scale);
     block_basis_.Scale(scale);
     bias_params_.Scale(scale);
   }
@@ -1009,7 +1008,7 @@ void BlockFactorizedTdnnComponent::Add(BaseFloat alpha,
   const BlockFactorizedTdnnComponent *other =
       dynamic_cast<const BlockFactorizedTdnnComponent*>(&other_in);
   KALDI_ASSERT(other != NULL);
-  linear_params_reduced_.AddMat(alpha, other->linear_params_reduced_);
+  reduced_linear_params_.AddMat(alpha, other->reduced_linear_params_);
   block_basis_.AddMat(alpha, other->block_basis_);
   ComputeLinearParams();
   if (bias_params_.Dim() != 0)
@@ -1018,11 +1017,11 @@ void BlockFactorizedTdnnComponent::Add(BaseFloat alpha,
 
 void BlockFactorizedTdnnComponent::PerturbParams(BaseFloat stddev) {
   {
-    CuMatrix<BaseFloat> temp_mat(linear_params_reduced_.NumRows(),
-                                 linear_params_reduced_.NumCols(),
+    CuMatrix<BaseFloat> temp_mat(reduced_linear_params_.NumRows(),
+                                 reduced_linear_params_.NumCols(),
                                  kUndefined);
     temp_mat.SetRandn();
-    linear_params_reduced_.AddMat(stddev, temp_mat);
+    reduced_linear_params_.AddMat(stddev, temp_mat);
   }
   {
     CuMatrix<BaseFloat> temp_mat(block_basis_.NumRows(),
@@ -1044,8 +1043,8 @@ BaseFloat BlockFactorizedTdnnComponent::DotProduct(
   const BlockFactorizedTdnnComponent *other =
       dynamic_cast<const BlockFactorizedTdnnComponent*>(&other_in);
   KALDI_ASSERT(other != NULL);
-  BaseFloat ans = TraceMatMat(linear_params_reduced_,
-                              other->linear_params_reduced_,
+  BaseFloat ans = TraceMatMat(reduced_linear_params_,
+                              other->reduced_linear_params_,
                               kTrans) +
                   TraceMatMat(block_basis_,
                               other->block_basis_,
@@ -1057,7 +1056,7 @@ BaseFloat BlockFactorizedTdnnComponent::DotProduct(
 
 int32 BlockFactorizedTdnnComponent::NumParameters() const {
   // note: bias_param_.Dim() may actually be zero.
-  return linear_params_reduced_.NumRows() * linear_params_reduced_.NumCols() +
+  return reduced_linear_params_.NumRows() * reduced_linear_params_.NumCols() +
       block_basis_.NumRows() * block_basis_.NumCols() +
       bias_params_.Dim();
 }
@@ -1065,12 +1064,12 @@ int32 BlockFactorizedTdnnComponent::NumParameters() const {
 void BlockFactorizedTdnnComponent::Vectorize(
     VectorBase<BaseFloat> *params) const {
   KALDI_ASSERT(params->Dim() == NumParameters());
-  int32 linear_size_reduced = linear_params_reduced_.NumRows() *
-                              linear_params_reduced_.NumCols(),
+  int32 linear_size_reduced = reduced_linear_params_.NumRows() *
+                              reduced_linear_params_.NumCols(),
                  basis_size = block_basis_.NumRows() *
                               block_basis_.NumCols(),
                   bias_size = bias_params_.Dim();
-  params->Range(0, linear_size_reduzed).CopyRowsFromMat(linear_params_reduced_);
+  params->Range(0, linear_size_reduced).CopyRowsFromMat(reduced_linear_params_);
   params->Range(linear_size_reduced, basis_size).CopyRowsFromMat(block_basis_);
   if (bias_size != 0)
     params->Range(linear_size_reduced + basis_size,
@@ -1080,12 +1079,12 @@ void BlockFactorizedTdnnComponent::Vectorize(
 void BlockFactorizedTdnnComponent::UnVectorize(
     const VectorBase<BaseFloat> &params) {
   KALDI_ASSERT(params.Dim() == NumParameters());
-  int32 linear_size_reduced = linear_params_reduced_.NumRows() *
-                              linear_params_reduced_.NumCols(),
+  int32 linear_size_reduced = reduced_linear_params_.NumRows() *
+                              reduced_linear_params_.NumCols(),
                  basis_size = block_basis_.NumRows() *
                               block_basis_.NumCols(),
                   bias_size = bias_params_.Dim();
-  linear_params_reduced_.CopyRowsFromVec(params.Range(0, linear_size_reduced));
+  reduced_linear_params_.CopyRowsFromVec(params.Range(0, linear_size_reduced));
   block_basis_.CopyRowsFromVec(params.Range(linear_size_reduced, basis_size));
   ComputeLinearParams();
   if (bias_size != 0)
