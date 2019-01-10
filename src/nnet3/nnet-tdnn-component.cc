@@ -39,12 +39,15 @@ TdnnComponent::TdnnComponent(
     const TdnnComponent &other):
     UpdatableComponent(other),  // initialize base-class
     time_offsets_(other.time_offsets_),
-    linear_params_(other.linear_params_),
     bias_params_(other.bias_params_),
     orthonormal_constraint_(other.orthonormal_constraint_),
     use_natural_gradient_(other.use_natural_gradient_),
     preconditioner_in_(other.preconditioner_in_),
     preconditioner_out_(other.preconditioner_out_) {
+  linear_params_.Resize(other.linear_params_.NumRows(),
+                        other.linear_params_.NumCols(),
+                        kUndefined, kStrideEqualNumCols);
+  linear_params_.CopyFromMat(other.linear_params_);
   Check();
 }
 
@@ -123,21 +126,19 @@ void TdnnComponent::InitFromConfig(ConfigLine *cfl) {
   // 3. Parameter-initialization configs, "has-bias", and
   // orthonormal-constraint.
   orthonormal_constraint_ = 0.0;
-  BaseFloat param_stddev = -1, bias_mean = 0.0, bias_stddev = 1.0;
+  BaseFloat bias_mean = 0.0, bias_stddev = 1.0;
   bool use_bias = true;
-  cfl->GetValue("param-stddev", &param_stddev);
   cfl->GetValue("bias-stddev", &bias_stddev);
   cfl->GetValue("bias-mean", &bias_mean);
   cfl->GetValue("use-bias", &use_bias);
   cfl->GetValue("orthonormal-constraint", &orthonormal_constraint_);
-  if (param_stddev < 0.0) {
-    param_stddev = 1.0 / sqrt(input_dim * time_offsets_.size());
-  }
-  // initialize the parameters.
-  linear_params_.Resize(output_dim,
-                        input_dim * time_offsets_.size());
-  linear_params_.SetRandn();
-  linear_params_.Scale(param_stddev);
+
+  // The following call reads "param-stddev" and initializes linear_params_
+  // (in TdnnComponent).
+  // In child-class BlockFactorizedTdnnComponent, it does more than this.
+  InitLinearParams(output_dim, input_dim * time_offsets_.size(),
+                   cfl);
+
 
   if (use_bias) {
     bias_params_.Resize(output_dim);
@@ -176,6 +177,23 @@ void TdnnComponent::InitFromConfig(ConfigLine *cfl) {
 
   preconditioner_in_.SetUpdatePeriod(4);
   preconditioner_out_.SetUpdatePeriod(4);
+}
+
+void TdnnComponent::InitLinearParams(
+    int32 num_rows,
+    int32 num_cols,
+    ConfigLine *cfl) {
+  BaseFloat param_stddev = -1;
+  cfl->GetValue("param-stddev", &param_stddev);
+
+  if (param_stddev < 0.0) {
+    param_stddev = 1.0 / sqrt(num_cols);
+  }
+  // initialize the parameters.
+  linear_params_.Resize(num_rows, num_cols,
+                        kUndefined, kStrideEqualNumCols);
+  linear_params_.SetRandn();
+  linear_params_.Scale(param_stddev);
 }
 
 void* TdnnComponent::Propagate(
@@ -421,20 +439,9 @@ void TdnnComponent::Read(std::istream &is, bool binary) {
       num_samples_history;
   ExpectToken(is, binary, "<NumSamplesHistory>");
   ReadBasicType(is, binary, &num_samples_history);
-  { // This can be simplified after a while.  It's to read a format of the model
-    // that was never checked into master, but with which I (Dan) did many of
-    // the experiments while tuning the resnet TDNN-F.
-    std::string token;
-    ReadToken(is, binary, &token);
-    if (token == "<AlphaInOut>") {
-      ReadBasicType(is, binary, &alpha_in);
-      ReadBasicType(is, binary, &alpha_out);
-    } else {
-      KALDI_ASSERT(token == "<Alpha>");
-      ReadBasicType(is, binary, &alpha_in);
-      alpha_out = alpha_in;
-    }
-  }
+  ExpectToken(is, binary, "<AlphaInOut>");
+  ReadBasicType(is, binary, &alpha_in);
+  ReadBasicType(is, binary, &alpha_out);
   preconditioner_in_.SetAlpha(alpha_in);
   preconditioner_out_.SetAlpha(alpha_out);
   ExpectToken(is, binary, "<RankInOut>");
@@ -700,6 +707,403 @@ void TdnnComponent::ConsolidateMemory() {
   OnlineNaturalGradient temp_out(preconditioner_out_);
   preconditioner_out_.Swap(&temp_out);
 }
+
+BlockFactorizedTdnnComponent::BlockFactorizedTdnnComponent(
+    const BlockFactorizedTdnnComponent &other):
+    TdnnComponent(other),
+    to_standard_indexes_(other.to_standard_indexes_),
+    to_intermediate_indexes_(other.to_intermediate_indexes_),
+    block_params_(other.block_params_) {
+  // We need to keep reduced_linear_params_ in contiguous storage.
+  reduced_linear_params_.Resize(other.reduced_linear_params_.NumRows(),
+                                other.reduced_linear_params_.NumCols(),
+                                kUndefined,
+                                kStrideEqualNumCols);
+  reducd_linear_params_.CopyFromMat(other.reduced_linear_params_);
+}
+
+std::string BlockFactorizedTdnnComponent::Info() const {
+  std::ostringstream stream;
+  stream << TdnnComponent::Info()
+         << ", input-block-dim" << InputBlockDim()
+         << ", output-block-dim=" << OutputBlockDim()
+         << ", params-per-block=" << ParamsPerBlock();
+
+  PrintParameterStats(stream, "reduced-linear-params",
+                      reduced_linear_params_,
+                      false, // include_mean
+                      true, // include_row_norms
+                      true, // include_column_norms
+                      GetVerboseLevel() >= 2); // include_singular_values
+  PrintParameterStats(stream, "block-params",
+                      block_params_,
+                      false, // include_mean
+                      true, // include_row_norms
+                      true, // include_column_norms
+                      GetVerboseLevel() >= 2); // include_singular_values
+  return stream.str();
+}
+
+/**
+   Suppose in the final matrix (linear_params_) we want a certain
+   user-specified parameter standard deviation (param-stddev).
+   We want to figure out what variances the reduced_linear_params_
+   and block_params_ need to have to achieve this (and we need
+   to determine their relative magnitudes in a sensible way).
+
+   Let us consider a single block of parameters, of dimension
+     output-block-dim by input-block-dim.
+   It will be easiest to view it as a vector, of dimension
+
+     block_dim = output-block-dim * input-block-dim.
+
+   We want this vector, of dimension block_dim, to have elements
+   with variance param-stddef.  Call this vector v.  We'll have
+
+        v := block_basis_ * params_of_block
+
+    where block_basis_ is of dimension (output-block-dim * input-block-dim)
+    by params-per-block, and params_of_block is a vector of dimenson
+    params-per-block (which will actually be a part of a row of reduced_linear_params_.
+    Suppose the two variances we specify are:
+       \sigma_r = stddev of elements of reduced_linear_params_
+       \sigma_t = stddev of elements of block_basis_
+
+    Then what is the variance of elements of v?  If we assume all eements
+    of params_of_block and block_basis_ are normally distributed, it's
+    not hard to show that an element of v has expected value 0 and variance
+    equal to params-per-block, i.e. stddev = sqrt(params-per-block).
+    Taking into account \sigma_r and \sigma_t, we have
+      stddev of element of v := sqrt(params-per-block) * \sigma_r * \sigma_t
+    so we want
+
+      sqrt(params-per-block) * \sigma_r * \sigma_t ==  param-stddev    (1)
+
+    (param-stddev was user-specified).  We also want to work out how to
+    apportion the variance between the two.  If we are doing l2 regularization,
+    the parameter noise and the l2 will cancel to keep the parameter magnitudes
+    constant, and we can use this to work out the relative parameter magnitudes
+    (we want to work out the ratio \sigma_r / \sigma_t.
+    Basically, in the equilibrium, for both parameter types the parameter
+    derivatives need to be in the same ratio to the magnitudes of the corresponding
+    parameters.
+
+       For a particular parameter type the derivative can be written as
+    a sum of products, where the elements of the sum can be taken to be random.
+    Because some of the magnitudes (e.g. of the input features or the
+    derivatives w.r.t. the output) are shared, they won't affect the ratio
+    and we can take them to be 1.  For an element of reduced_linear_params_,
+    the derivative looks like:
+
+
+      a sum of terms of the form:
+         output-deriv * input-value * element of block_basis_
+      and the number of such terms, for each frame, equals:
+        (input-block-dim * output-block-dim).
+     So:
+        deriv-stddev for element of reduced_linear_params_ \propto ...
+          sqrt(input_block_dim*output_block_dim) * \sigma_t
+     (again: since it won't matter we assume the stddevs of the output-deriv
+     and input-value are 1).
+
+     And, using similar logic:
+       deriv-stddev for element of block_basis_ \propto ...
+          sqrt(num_input_blocks * num_output_blocks) * \sigma_r
+
+     We want the deriv-stddevs to be in the same ratio as the parameter
+     stddevs, so this gives us:
+
+       \sigma_t / \sigma_r \propto  (sqrt(num_input_blocks * num_output_blocks) * \sigma_r) /
+                                    (sqrt(input_block_dim * output_block_dim) * \sigma_t)
+
+    which we can reduce to:
+
+    \sigma_t / \sigma_r \propto ((num_input_blocks * num_output_blocks)/(input_block_dim*output_block_dim))^{1/4}
+
+   From (1) above, we know that the geometric mean of \sigma_r and \sigma_t (call this \sigma_g), is:
+
+      \sigma_g  =  sqrt(param-stddev) * params-per-block^{-1/4}
+   And defining
+     q = (num_input_blocks * num_output_blocks) / (input_block_dim*output_block_dim)^(1/8)
+   then we have
+     \sigma_t = \sigma_g * q
+     \sigma_r = \sigma_g / q
+ */
+void BlockFactorizedTdnnComponent::InitLinearParams(
+    int32 num_rows,
+    int32 num_cols,
+    ConfigLine *cfl) {
+  BaseFloat param_stddev = -1;
+  BaseFloat param_stddev;
+  cfl->GetValue("param-stddev", &param_stddev);
+
+  int32 input_block_dim = -1, output_block_dim = -1,
+       params_per_block = -1;
+
+  ok = cfl->GetValue("input-block-dim", &input_block_dim) &&
+       cfl->GetValue("output-block-dim", &input_block_dim) &&
+       cfl->GetValue("params-per-block", &params_per_block);
+  if (!ok || num_cols % input_block_dim != 0 ||
+      num_rows % output_block_dim != 0 ||
+      params_per_block <= 0)
+    KALDI_ERR << "Bad initializer: there is a problem with "
+        "input-block-dim, output-block-dim or params-per-block: "
+              << cfl->WholeLine();
+
+  if (param_stddev < 0.0) {
+    param_stddev = 1.0 / sqrt(num_cols);
+  }
+
+  int32 num_input_blocks = num_cols / input_block_dim,
+       num_output_blocks = num_rows / output_block_dim;
+
+  // We are implementing what's described in the math above.
+  // sigma_g is the geometric mean of the stddevs sigma_t and sigma_r.
+  BaseFloat sigma_g = sqrt(params_per_block) * pow(params_per_block, -0.25),
+                  q = pow(num_input_blocks * num_output_blocks * 1.0 /
+                          (input_block_dim * output_block_dim), 0.125),
+            sigma_t = sigma_g * q,
+            sigma_r = sigma_g / q;
+
+  block_basis_.Resize(output_block_dim * input_block_dim, params_per_block,
+                          kUndefined);
+  block_basis_.SetRandn();
+  block_basis_.Scale(sigma_t);
+
+  reduced_linear_params_.Resize(num_output_blocks,
+                                num_input_blocks * params_per_block,
+                                kUndefined,
+                                kStrideEqualNumCols);
+  reduced_linear_params_.SetRandn();
+  reduced_linear_params_.Scale(sigma_r);
+
+  linear_params_.Resize(num_rows, num_cols);
+
+  // set up linear_params_.
+  ComputeLinearParams();
+
+  KALDI_ASSERT(linear_params_.NumRows() == num_rows &&
+               linear_params_.NumCols() == num_cols);
+
+  BaseFloat linear_params_stddev = sqrt(TraceMatMat(linear_params_,
+                                                    linear_params_, kTrans) /
+                                        (num_rows * num_cols)),
+                           ratio = linear_params_stddev / param_stddev;
+  if (fabs(ratio - 1.0) > 0.2) {
+    // Maybe something went wrong in the math (or it could just be noise,
+    // if the dims are very small).
+    KALDI_WARN << "You specified param-stddev=" << param_stddev
+               << ", but we got " << linear_params_stddev;
+  }
+}
+
+
+void BlockFactorizedTdnnComponent::Write(std::ostream &os, bool binary) const {
+  WriteUpdatableCommon(os, binary);  // Write opening tag and learning rate.
+  WriteToken(os, binary, "<TimeOffsets>");
+  WriteIntegerVector(os, binary, time_offsets_);
+  WriteToken(os, binary, "<LinearParamsReduced>");
+  linear_params_reduced_.Write(os, binary);
+  WriteToken(os, binary, "<BlockBasis>");
+  block_basis_.Write(os, binary);
+  WriteToken(os, binary, "<BiasParams>");
+  bias_params_.Write(os, binary);
+  WriteToken(os, binary, "<OrthonormalConstraint>");
+  WriteBasicType(os, binary, orthonormal_constraint_);
+  WriteToken(os, binary, "<UseNaturalGradient>");
+  WriteBasicType(os, binary, use_natural_gradient_);
+  int32 rank_in = preconditioner_in_.GetRank(),
+      rank_out = preconditioner_out_.GetRank();
+  BaseFloat alpha_in = preconditioner_in_.GetAlpha(),
+      alpha_out = preconditioner_out_.GetAlpha(),
+      num_samples_history = preconditioner_in_.GetNumSamplesHistory();
+  WriteToken(os, binary, "<NumSamplesHistory>");
+  WriteBasicType(os, binary, num_samples_history);
+  WriteToken(os, binary, "<AlphaInOut>");
+  WriteBasicType(os, binary, alpha_in);
+  WriteBasicType(os, binary, alpha_out);
+  WriteToken(os, binary, "<RankInOut>");
+  WriteBasicType(os, binary, rank_in);
+  WriteBasicType(os, binary, rank_out);
+  WriteToken(os, binary, "</BlockFactorizedTdnnComponent>");
+}
+
+
+static void ReadWithStrideEqualNumCols(std::istream &is, bool binary,
+                                      CuMatrix<BaseFloat> *mat) {
+  Matrix<BaseFloat> temp;
+  temp.Read(is, binary);
+  mat->Resize(temp.NumRows(), temp.NumCols(),
+              kUndefined, kStrideEqualNumCols);
+  mat->CopyFromMat(temp);
+}
+
+void BlockFactorizedTdnnComponent::Read(std::istream &is, bool binary) {
+  std::string token = ReadUpdatableCommon(is, binary);
+  ExpectToken(is, binary, "<TimeOffsets>");
+  ReadIntegerVector(is, binary, &time_offsets_);
+  ExpectToken(is, binary, "<LinearParamsReduced>");
+  ReadWithStrideEqualNumCols(is, binary,  &linear_params_reduced_);
+  ExpectToken(is, binary, "<BlockBasis>");
+  block_basis_.Read(is, binary);
+  // We can work out all the other dimensions if we know either input-block-dim or
+  // output-block-dim; we read input-block-dim.
+  int32 input_block_dim;
+  ExpectToken(is, binary, "<InputBlockDim>");
+  ReadBasicType(is, binary, &input_block_dim_);
+  int32 output_block_dim = block_basis_.NumRows() / input_block_dim,
+        params_per_block = block_basis_.NumCols(),
+        num_input_blocks = linear_params_reduced_.NumCols() / params_per_block,
+       num_output_blocks = linear_params_reduced_.NumRows();
+  linear_params_.Resize(num_output_blocks * output_block_dim,
+                        num_input_blocks * input_block_dim,
+                        kUndefined);
+  ComputeLinearParams();
+  ExpectToken(is, binary, "<BiasParams>");
+  bias_params_.Read(is, binary);
+  ExpectToken(is, binary, "<OrthonormalConstraint>");
+  ReadBasicType(is, binary, &orthonormal_constraint_);
+  ExpectToken(is, binary, "<UseNaturalGradient>");
+  ReadBasicType(is, binary, &use_natural_gradient_);
+  int32 rank_in,  rank_out;
+  BaseFloat alpha_in, alpha_out,
+      num_samples_history;
+  ExpectToken(is, binary, "<NumSamplesHistory>");
+  ReadBasicType(is, binary, &num_samples_history);
+  ExpectToken(is, binary, "<AlphaInOut>");
+  ReadBasicType(is, binary, &alpha_in);
+  ReadBasicType(is, binary, &alpha_out);
+  preconditioner_in_.SetAlpha(alpha_in);
+  preconditioner_out_.SetAlpha(alpha_out);
+  ExpectToken(is, binary, "<RankInOut>");
+  ReadBasicType(is, binary, &rank_in);
+  ReadBasicType(is, binary, &rank_out);
+  preconditioner_in_.SetRank(rank_in);
+  preconditioner_out_.SetRank(rank_out);
+  preconditioner_in_.SetNumSamplesHistory(num_samples_history);
+  preconditioner_out_.SetNumSamplesHistory(num_samples_history);
+  // the update periods are not configurable.
+  preconditioner_in_.SetUpdatePeriod(4);
+  preconditioner_out_.SetUpdatePeriod(4);
+  ExpectToken(is, binary, "</BlockFactorizedTdnnComponent>");
+  Check();
+}
+
+void BlockFactorizedTdnnComponent::Scale(BaseFloat scale) {
+  if (scale == 0.0) {
+    linear_params_.SetZero();
+    linear_params_reduced_.SetZero();
+    block_basis_.SetZero();
+    bias_params_.SetZero();
+  } else {
+    linear_params_.Scale(scale * scale);
+    linear_params_reduced_.Scale(scale);
+    block_basis_.Scale(scale);
+    bias_params_.Scale(scale);
+  }
+}
+
+
+void BlockFactorizedTdnnComponent::Add(BaseFloat alpha,
+                        const Component &other_in) {
+  const BlockFactorizedTdnnComponent *other =
+      dynamic_cast<const BlockFactorizedTdnnComponent*>(&other_in);
+  KALDI_ASSERT(other != NULL);
+  linear_params_reduced_.AddMat(alpha, other->linear_params_reduced_);
+  block_basis_.AddMat(alpha, other->block_basis_);
+  ComputeLinearParams();
+  if (bias_params_.Dim() != 0)
+    bias_params_.AddVec(alpha, other->bias_params_);
+}
+
+void BlockFactorizedTdnnComponent::PerturbParams(BaseFloat stddev) {
+  {
+    CuMatrix<BaseFloat> temp_mat(linear_params_reduced_.NumRows(),
+                                 linear_params_reduced_.NumCols(),
+                                 kUndefined);
+    temp_mat.SetRandn();
+    linear_params_reduced_.AddMat(stddev, temp_mat);
+  }
+  {
+    CuMatrix<BaseFloat> temp_mat(block_basis_.NumRows(),
+                                 block_basis_.NumCols(),
+                                 kUndefined);
+    temp_mat.SetRandn();
+    block_basis_.AddMat(stddev, temp_mat);
+  }
+  ComputeLinearParams();
+  if (bias_params_.Dim() != 0) {
+    CuVector<BaseFloat> temp_vec(bias_params_.Dim(), kUndefined);
+    temp_vec.SetRandn();
+    bias_params_.AddVec(stddev, temp_vec);
+  }
+}
+
+BaseFloat BlockFactorizedTdnnComponent::DotProduct(
+    const UpdatableComponent &other_in) const {
+  const BlockFactorizedTdnnComponent *other =
+      dynamic_cast<const BlockFactorizedTdnnComponent*>(&other_in);
+  KALDI_ASSERT(other != NULL);
+  BaseFloat ans = TraceMatMat(linear_params_reduced_,
+                              other->linear_params_reduced_,
+                              kTrans) +
+                  TraceMatMat(block_basis_,
+                              other->block_basis_,
+                              kTrans);
+  if (bias_params_.Dim() != 0)
+    ans += VecVec(bias_params_, other->bias_params_);
+  return ans;
+}
+
+int32 BlockFactorizedTdnnComponent::NumParameters() const {
+  // note: bias_param_.Dim() may actually be zero.
+  return linear_params_reduced_.NumRows() * linear_params_reduced_.NumCols() +
+      block_basis_.NumRows() * block_basis_.NumCols() +
+      bias_params_.Dim();
+}
+
+void BlockFactorizedTdnnComponent::Vectorize(
+    VectorBase<BaseFloat> *params) const {
+  KALDI_ASSERT(params->Dim() == NumParameters());
+  int32 linear_size_reduced = linear_params_reduced_.NumRows() *
+                              linear_params_reduced_.NumCols(),
+                 basis_size = block_basis_.NumRows() *
+                              block_basis_.NumCols(),
+                  bias_size = bias_params_.Dim();
+  params->Range(0, linear_size_reduzed).CopyRowsFromMat(linear_params_reduced_);
+  params->Range(linear_size_reduced, basis_size).CopyRowsFromMat(block_basis_);
+  if (bias_size != 0)
+    params->Range(linear_size_reduced + basis_size,
+                  bias_size).CopyFromVec(bias_params_);
+}
+
+void BlockFactorizedTdnnComponent::UnVectorize(
+    const VectorBase<BaseFloat> &params) {
+  KALDI_ASSERT(params.Dim() == NumParameters());
+  int32 linear_size_reduced = linear_params_reduced_.NumRows() *
+                              linear_params_reduced_.NumCols(),
+                 basis_size = block_basis_.NumRows() *
+                              block_basis_.NumCols(),
+                  bias_size = bias_params_.Dim();
+  linear_params_reduced_.CopyRowsFromVec(params.Range(0, linear_size_reduced));
+  block_basis_.CopyRowsFromVec(params.Range(linear_size_reduced, basis_size));
+  ComputeLinearParams();
+  if (bias_size != 0)
+    bias_params_.CopyFromVec(params.Range(linear_size_reduced + basis_size,
+                                          bias_size));
+}
+
+void BlockFactorizedTdnnComponent::Check() const {
+  KALDI_ASSERT(linear_params_.NumRows() > 0 &&
+               !time_offsets_.empty() &&
+               std::set<int32>(time_offsets_.begin(),
+                               time_offsets_.end()).size() ==
+               time_offsets_.size() &&
+               linear_params_.NumCols() % time_offsets_.size() == 0 &&
+               (bias_params_.Dim() == 0 ||
+                bias_params_.Dim() == linear_params_.NumRows()));
+}
+
 
 } // namespace nnet3
 } // namespace kaldi

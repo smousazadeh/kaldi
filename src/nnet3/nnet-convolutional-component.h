@@ -559,8 +559,25 @@ class TdnnComponent: public UpdatableComponent {
 
   BaseFloat OrthonormalConstraint() const { return orthonormal_constraint_; }
 
-  void ConsolidateMemory();
+  void ConsolidateMemory() override;
  private:
+
+  /**
+     This is a piece of the function InitFromConfig() that is broken out and
+     made virtual, so that it can be overridden in child-class
+     BlockFactorizedTdnnComponent.
+     @param [in] num_rows   The number of rows desired in linear_params_, which
+                         equals the output-dim of this component
+     @param [in] num_cols  The number of columns desired in linear_params, which
+                         equals the input-dim of this component multiplied
+                         by times_offset_.size() (i.e. the  number of elements
+                         in the 'time-offsets' config parameter.
+     @param [in,out] cfl  The config line we are parsing.  In the case of
+                        TdnnComponent it will only read the 'param-stddev'.
+  */
+  virtual void InitLinearParams(int32 num_rows,
+                                int32 num_cols,
+                                ConfigLine *cfl);
 
   // This static function is a utility function that extracts a CuSubMatrix
   // representing a subset of rows of 'input_matrix'.
@@ -579,18 +596,19 @@ class TdnnComponent: public UpdatableComponent {
 
   // Function that updates linear_params_, and bias_params_ if present, which
   // uses the natural gradient code.
-  void UpdateNaturalGradient(
+  // Virtual because it's overridden by child class BlockFactorizedTdnnComponent.
+  virtual void UpdateNaturalGradient(
       const PrecomputedIndexes &indexes,
       const CuMatrixBase<BaseFloat> &in_value,
       const CuMatrixBase<BaseFloat> &out_deriv);
 
   // Function that updates linear_params_, and bias_params_ if present, which
   // does not use the natural gradient code.
-  void UpdateSimple(
+  // Virtual because it's overridden by child class BlockFactorizedTdnnComponent.
+  virtual void UpdateSimple(
       const PrecomputedIndexes &indexes,
       const CuMatrixBase<BaseFloat> &in_value,
       const CuMatrixBase<BaseFloat> &out_deriv);
-
 
 
 
@@ -600,6 +618,8 @@ class TdnnComponent: public UpdatableComponent {
 
   // the linear parameters of the network; its NumRows() is the output
   // dim, and its NumCols() equals the input dim times time_offsets_.size().
+  // When this object is really child-class BlockFactorizedTdnnComponent
+  // we ensure that this is stored with NumCols() == Stride().
   CuMatrix<BaseFloat> linear_params_;
 
   // the bias parameters if this is an affine transform, or the empty vector if
@@ -629,6 +649,234 @@ class TdnnComponent: public UpdatableComponent {
 };
 
 
+
+/**
+   BlockFactorizedTdnnComponent is a modified form of TdnnComponent (which
+   inherits from TdnnComponent) that is
+   inspired by quaternion-based neural networks, but is more general and trainable--
+   the idea is that blocks of parameters are linear functions of
+   a smaller number parameters, where the linear function itself is trainable.
+   For example, in
+
+         Q_{mat} = [ r  -x  -y  -z
+                     x  r   -z  y
+                     y  z   r   -x
+                     z  -y  x   r  ]
+
+   (where the quaternion is parameterized by r,x,y,z); and we can generalize
+   and say the block has four parameters (r,x,y,z) and we have a 16x4 learnable
+   matrix that maps from those 4 parameters to the matrix entries.  In
+   general there doesn't have to be a correspondence between the number
+   of rows and columns of these blocks and the number of parameters per block,
+   i.e. the 4 rows of the block, 4 columns of the block and 4 parameters
+   don't need to all be the same number.
+
+   Please understand that TdnnComponent is basically an affine component
+   that happens to have some advantages in terms of memory efficiency
+   when you are doing splicing over time.  You can use it as you would
+   use an AffineComponent, and the block factorization doesn't really
+   interact with that splicing-over-time stuff (or indeed with the
+   bias term). so it might be easier to imagine that we are sub-classing
+   a LinearComponent.
+
+
+
+   Below we list the config parameters recognized in InitFromConfig().
+
+
+   The following options are specific to this sub-class, and all are required.
+
+      output-block-dim      The number of rows of each block of linear_params_
+                            (must divide output-dim).  Each block, which is a
+                            matrix, is obtained as a product of block_params_
+                            with a vector of size params-per-block specific to
+                            that block.
+      input-block-dim       The number of columns of each block of linear_params_
+                            (must divide input-dim).
+      params-per-block      The number of real paramters per block (should
+                            probably be substantially less than input-block-dim
+                            * output-block-dim, or this method doesn't really
+                            make sense, but we don't enforce that).
+
+   All the parameters mentioned below are the same as in TdnnComponent.
+
+   Parameters inherited from UpdatableComponent, via TdnnComponent (see comment
+   above declaration of UpdadableComponent in nnet-component-itf.h for details):
+
+       learning-rate, learning-rate-factor, max-change
+
+   Parameters inherited from TdnnComponent:
+
+     input-dim         The input feature dimension (before splicing); the num-cols
+                       of linear_params_ is this value times time_offsets_.size().
+
+     output-dim        The output feature dimension
+
+     time-offsets     E.g. time-offsets=-1,0,1 or time-offsets=-3,0,3.
+                      The time offsets that we require at the input to produce a given output.
+                      comparable to the offsets used in TDNNs.  They
+                      must be unique (no repeats).
+     use-bias         Defaults to true, but set to false if you want this to
+                      be linear rather than affine in its input.
+
+
+     orthonormal-constraint=0.0  You can set this to -1 to enable a 'floating'
+                      orthonormal constraint on both parameters
+                      reduced_linear_params_ and block_params_.  Will help
+                      stability a lot.  (Values >0 are also possible but not
+                      recommended).
+
+
+   Initialization parameters inherited from TdnnComponent:
+      param-stddev    Standard deviation of the linear parameters of the
+                      convolution.  Defaults to
+                      sqrt(1.0 / (input-dim * the number of time-offsets))
+                      TODO: document what is done here.
+      bias-stddev     Standard deviation of bias terms.  default=0.0.
+                      You should not set this if you set use-bias=false.
+
+
+   The natural-gradient related options
+      use-natural-gradient, rank-out, rank-in, num-samples-history
+   are inherited from TdnnComponent; you won't normally have to set these as the
+   defaults are reasonable.
+
+
+ */
+class BlockFactorizedTdnnComponent: public TdnnComponent {
+ public:
+
+  // The use of this constructor should only precede InitFromConfig()
+  BlockFactorizedTdnnComponent() { }
+
+  // Copy constructor
+  BlockFactorizedTdnnComponent(const BlockFactorizedTdnnComponent &other);
+
+  // Many class members inherit from TdnnComponent.
+
+  std::string Info() const override;
+  std::string Type() const override { return "BlockFactorizedTdnnComponent"; }
+
+  // Propagate() and Backprop() are inherited from class TdnnComponent.
+
+  void Read(std::istream &is, bool binary) override;
+  void Write(std::ostream &os, bool binary) const override;
+  Component* Copy() const override {
+    return new BlockFactorizedTdnnComponent(*this);
+  }
+  void Scale(BaseFloat scale) override;
+  void Add(BaseFloat alpha, const Component &other) override;
+  void PerturbParams(BaseFloat stddev) override;
+  BaseFloat DotProduct(const UpdatableComponent &other) const override;
+  int32 NumParameters() const override;
+  void Vectorize(VectorBase<BaseFloat> *params) const override;
+  void UnVectorize(const VectorBase<BaseFloat> &params) override;
+
+  // These members are specific to this class.
+  CuMatrixBase<BaseFloat> &ReducedLinearParams() { return reduced_linear_params_; }
+  CuMatrixBase<BaseFloat> &BlockParams() { return block_params_; }
+
+ private:
+
+  void Check();
+
+  // This function, called from TdnnComponent::InitFromConfig(),
+  // reads the configuration values:
+  //    output-block-dim, input-block-dim, params-per-block,
+  //    param-stddev
+  // See comments in the implementation for further details,
+  // e.g. on how param-stddev is interpreted.
+  void InitLinearParams(int32 num_rows,
+                        int32 num_cols,
+                        ConfigLine *cfl) override;
+
+
+  // This function computes the elements of linear_params_ (the base-class's
+  // member object) from the class members reduced_linear_params_ and
+  // block_params_.
+  // It requires linear_params_ to already be correctly sized.
+  void ComputeLinearParams();
+
+  // Returns the num-cols of each block of parameters in linear_params_.
+  inline int32 InputBlockDim() {
+    return linear_params_.NumCols() / NumInputBlocks();
+  }
+  // Returns the num-rows of each block of parameters in linear_params_.
+  inline int32 OutputBlockDim() {
+    return linear_params_.NumRows() / reduced_linear_params_.NumRows();
+  }
+  // Returns the number of parameters we allocate per block of parameters; would
+  // normally be substantially less than InputBlockDim() * OutputBlockDim().
+  inline int32 ParamsPerBlock() { return block_params_.NumCols(); }
+  inline int32 NumInputBlocks() {
+    return reduced_linear_params_.NumCols() / ParamsPerBlock();
+  }
+  inline int32 NumOutputBlocks() { return reduced_linear_params_.NumRows(); }
+
+  // This function converts from 'standard' form of the linear transform
+  // (i.e. the form linear_params_ is in) to 'intermediate' (reordered) form,
+  // which is a matrix of dimension
+  //        NumOutputBlocks()  by
+  //        NumInputBlocks() * OutputBlockDim() * InputBlockDim()
+  // where the 3 factors above are displayed in order of greatest to least stride.
+  // This is just a call to CopyCols(), done as its own function for documentation
+  // and error checking.
+  // We require both linear_params and intermediate_params to have
+  // NumCols() == Stride().
+  void ConvertToIntermediate(const CuMatrixBase<BaseFloat> &linear_params,
+                             CuMatrixBase<BaseFloat> *intermediate_params) const;
+
+  // This does the inverse transformation to ConvertToIntermediate();
+  // see its documentation for details on the input and output formats.
+  void ConvertToStandard(const CuMatrixBase<BaseFloat> &intermediate_params,
+                         CuMatrixBase<BaseFloat> *linear_params) const;
+
+
+  // This function creates the 'intermediate' form of the parameters from
+  // reduced_linear_params_ and block_basiss_; intermediate_params
+  // should have dimension
+  // which is a matrix of dimension
+  //        NumOutputBlocks()  by
+  //        NumInputBlocks() * OutputBlockDim() * InputBlockDim()
+  // where the 3 factors above are displayed in order of greatest to least stride,
+  // and should have NumCols() == Stride().  This matrix must be
+  // free of NaN's on entry, but does not otherwise have to be defined.
+  void MakeIntermediateParams(
+      CuMatrixBase<BaseFloat> *intermediate_params) const;
+
+
+
+
+  // Sets up the arrays to_final_indexes_ and to_intermediate_indexes_.
+  void CreateIndexes();
+
+  // Used in ConvertToStandardForm(), set up by CreateIndexes();
+  CuArray<int32> to_standard_indexes_;
+
+  // Used in ConvertToIntermediateForm(), set up by CreateIndexes().
+  CuArray<int32> to_intermediate_indexes_;
+
+
+  // reduced_linear_params_ and block_params_ are the 'real' parameters
+  // underlying linear_params_.
+
+  // reduced_linear_params_ is of dimension NumOutputBlocks() by
+  // (NumInputBlocks() * ParamsPerBlock()), where in the column indexes,
+  // the input block number has a higher stride than the parameter within the
+  // block.
+  // This matrix is stored contiguously (i.e., kStrideEqualNumCols),
+  // which is necessary given some striding/reshaping that we do
+  // in the implementation.
+  CuMatrix<BaseFloat> reduced_linear_params_;
+
+  // block_basis_ is of dimension
+  //    (OutputBlockDim() * InputBlockDim())  by  ParamsPerBlock().
+  // It contains the mapping from compressed vector form of each block,
+  // to full matrix form.
+  // The InputBlockDim() and OutputBlockDim() are in order of larger
+  // to smaller to stride (i.e. the input blocks are on consecutive rows).
+  CuMatrix<BaseFloat> block_basis_;
+};
 
 
 
