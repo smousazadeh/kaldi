@@ -1246,6 +1246,7 @@ void VarNormComponent::Add(BaseFloat alpha, const Component &other_in) {
   if (count_ != 0.0) {
     scale_.CopyFromVec(stats_sumsq_);
     scale_.Scale(1.0 / count_);
+    scale_.Add(epsilon_);
     scale_.ApplyPow(-0.5);
   } else {
     scale_.Set(1.0);
