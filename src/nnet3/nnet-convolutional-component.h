@@ -811,7 +811,7 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
   inline int32 NumInputBlocks() const {
     return reduced_linear_params_.NumCols() / ParamsPerBlock();
   }
-  inline int32 NumOutputBlocks() { return reduced_linear_params_.NumRows(); }
+  inline int32 NumOutputBlocks() const { return reduced_linear_params_.NumRows(); }
 
   // This function converts from 'standard' form of the linear transform
   // (i.e. the form linear_params_ is in) to 'intermediate' (reordered) form,

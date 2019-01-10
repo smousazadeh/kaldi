@@ -722,6 +722,21 @@ BlockFactorizedTdnnComponent::BlockFactorizedTdnnComponent(
   reduced_linear_params_.CopyFromMat(other.reduced_linear_params_);
 }
 
+void BlockFactorizedTdnnComponent::MakeIntermediateParams(
+    CuMatrixBase<BaseFloat> *intermediate_params) const {
+  CuSubMatrix<BaseFloat> linear_params_reshaped(reduced_linear_params_.Data(),
+                                     NumOutputBlocks() * NumInputBlocks(),
+                                     ParamsPerBlock(),
+                                     ParamsPerBlock());
+  CuSubMatrix<BaseFloat> intermediate_params_reshaped(intermediate_params->Data(),
+                                           NumOutputBlocks() * NumInputBlocks(),
+                                           OutputBlockDim() * InputBlockDim(),
+                                           OutputBlockDim() * InputBlockDim());
+  intermediate_params_reshaped.AddMatMat(1.0, linear_params_reshaped, kNoTrans,
+                                         block_basis_, kTrans, 0.0);
+}
+
+
 std::string BlockFactorizedTdnnComponent::Info() const {
   std::ostringstream stream;
   stream << TdnnComponent::Info()
