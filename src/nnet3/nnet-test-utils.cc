@@ -63,13 +63,13 @@ void GenerateConfigSequenceSimpleContext(
   if (splice_context.empty())
     splice_context.push_back(0);
 
-  int32 input_dim = 10 + Rand() % 20,
+  int32 input_dim = 5 * (3 + Rand() % 5),
       spliced_dim = input_dim * splice_context.size(),
       output_dim = (opts.output_dim > 0 ?
                     opts.output_dim :
-                    100 + Rand() % 200);
+                    5 * (25 + Rand() % 50));
 
-  if (RandInt(0,1) == 0) {
+  if (RandInt(0,3) == 0) {
     // do it the traditional way with an AffineComponent and an Append() expression.
     os << "component name=affine1 type=AffineComponent input-dim="
        << spliced_dim << " output-dim=" << output_dim << std::endl;
@@ -85,7 +85,7 @@ void GenerateConfigSequenceSimpleContext(
     }
     os << ")\n";
     os << "output-node name=output input=affine1_node\n";
-  } else {
+  } else if (RandInt(0,1) == 0) {
     os << "component name=tdnn1 type=TdnnComponent input-dim="
        << input_dim << " output-dim=" << output_dim
        << " time-offsets=";
@@ -99,7 +99,25 @@ void GenerateConfigSequenceSimpleContext(
     os << "input-node name=input dim=" << input_dim << std::endl;
     os << "component-node name=tdnn1_node component=tdnn1 input=input\n";
     os << "output-node name=output input=tdnn1_node\n";
+  } else {
+    os << "component name=tdnn1 type=BlockFactorizedTdnnComponent"
+       << " input-block-dim=5 output-block-dim=5 "
+       << " params-per-block=" << RandInt(5, 10)
+       << " input-dim=" << input_dim
+       << " output-dim=" << output_dim
+       << " time-offsets=";
+    for (size_t i = 0; i < splice_context.size(); i++) {
+      if (i>0) os << ',';
+      os << splice_context[i];
+    }
+    os << " use-bias=" << (RandInt(0,1) == 0 ? "true":"false")
+       << " use-natural-gradient="  << (RandInt(0,1) == 0 ? "true":"false")
+       << std::endl;
+    os << "input-node name=input dim=" << input_dim << std::endl;
+    os << "component-node name=tdnn1_node component=tdnn1 input=input\n";
+    os << "output-node name=output input=tdnn1_node\n";
   }
+
   configs->push_back(os.str());
 }
 

@@ -1025,6 +1025,7 @@ void ConstrainOrthonormal(Nnet *nnet) {
     Component *component = nnet->GetComponent(c);
     CuMatrixBase<BaseFloat> *params = NULL;
     BaseFloat orthonormal_constraint = 0.0;
+    int32 rand_period = 4;
 
     LinearComponent *lc = dynamic_cast<LinearComponent*>(component);
     if (lc != NULL && lc->OrthonormalConstraint() != 0.0) {
@@ -1036,12 +1037,37 @@ void ConstrainOrthonormal(Nnet *nnet) {
       orthonormal_constraint = ac->OrthonormalConstraint();
       params = &(ac->LinearParams());
     }
-    TdnnComponent *tc = dynamic_cast<TdnnComponent*>(component);
-    if (tc != NULL && tc->OrthonormalConstraint() != 0.0) {
-      orthonormal_constraint = tc->OrthonormalConstraint();
-      params = &(tc->LinearParams());
+    if (component->Type() == "TdnnComponent") {
+      TdnnComponent *tc = dynamic_cast<TdnnComponent*>(component);
+      if (tc->OrthonormalConstraint() != 0.0) {
+        orthonormal_constraint = tc->OrthonormalConstraint();
+        params = &(tc->LinearParams());
+      }
     }
-    if (orthonormal_constraint == 0.0 || RandInt(0, 3) != 0) {
+    BlockFactorizedTdnnComponent *bc =
+        dynamic_cast<BlockFactorizedTdnnComponent*>(component);
+    if (bc != NULL) {
+      if (bc->OrthonormalConstraint() != 0.0) {
+        orthonormal_constraint = bc->OrthonormalConstraint();
+        params = &(bc->ReducedLinearParams());
+      }
+      if (bc->BasisOrthonormalConstraint() != 0.0) {
+        bool ok = true;
+        if (params != NULL) {
+          // If we are applying both constraints, we just randomly pick one of
+          // the two to apply on this iteration, and double the frequency with
+          // which we (randomly) apply any constraint at all.
+          rand_period /= 2;
+          ok = (RandInt(0, 1) == 0);
+        }
+        if (ok) {
+          orthonormal_constraint = bc->BasisOrthonormalConstraint();
+          params = &(bc->BlockParams());
+        }
+      }
+    }
+
+    if (orthonormal_constraint == 0.0 || RandInt(0, rand_period - 1) != 0) {
       // For efficiency, only do this every 4 or so minibatches-- it won't have
       // time stray far from the constraint in between.
       continue;
@@ -1055,6 +1081,12 @@ void ConstrainOrthonormal(Nnet *nnet) {
       ConstrainOrthonormalInternal(orthonormal_constraint, &params_trans);
       params->CopyFromMat(params_trans, kTrans);
     }
+
+    // we need to update linear_params_ if it's of type
+    // BlockFactorizedTdnnComponent.
+    if (bc != NULL)
+      bc->ComputeLinearParams();
+
   }
 }
 

@@ -702,7 +702,8 @@ BlockFactorizedTdnnComponent::BlockFactorizedTdnnComponent(
     TdnnComponent(other),
     to_standard_indexes_(other.to_standard_indexes_),
     to_intermediate_indexes_(other.to_intermediate_indexes_),
-    block_basis_(other.block_basis_) {
+    block_basis_(other.block_basis_),
+    basis_orthonormal_constraint_(other.basis_orthonormal_constraint_) {
   // We need to keep reduced_linear_params_ in contiguous storage.
   reduced_linear_params_.Resize(other.reduced_linear_params_.NumRows(),
                                 other.reduced_linear_params_.NumCols(),
@@ -848,6 +849,10 @@ void BlockFactorizedTdnnComponent::InitLinearParams(
 
   int32 input_block_dim = -1, output_block_dim = -1,
        params_per_block = -1;
+  basis_orthonormal_constraint_ = -1;
+
+  cfl->GetValue("basis-orthonormal-constraint",
+                &basis_orthonormal_constraint_);
 
   bool ok = cfl->GetValue("input-block-dim", &input_block_dim) &&
       cfl->GetValue("output-block-dim", &output_block_dim) &&
@@ -922,6 +927,8 @@ void BlockFactorizedTdnnComponent::Write(std::ostream &os, bool binary) const {
   bias_params_.Write(os, binary);
   WriteToken(os, binary, "<OrthonormalConstraint>");
   WriteBasicType(os, binary, orthonormal_constraint_);
+  WriteToken(os, binary, "<BasisOrthonormalConstraint>");
+  WriteBasicType(os, binary, basis_orthonormal_constraint_);
   WriteToken(os, binary, "<UseNaturalGradient>");
   WriteBasicType(os, binary, use_natural_gradient_);
   int32 rank_in = preconditioner_in_.GetRank(),
@@ -976,6 +983,8 @@ void BlockFactorizedTdnnComponent::Read(std::istream &is, bool binary) {
   bias_params_.Read(is, binary);
   ExpectToken(is, binary, "<OrthonormalConstraint>");
   ReadBasicType(is, binary, &orthonormal_constraint_);
+  ExpectToken(is, binary, "<BasisOrthonormalConstraint>");
+  ReadBasicType(is, binary, &basis_orthonormal_constraint_);
   ExpectToken(is, binary, "<UseNaturalGradient>");
   ReadBasicType(is, binary, &use_natural_gradient_);
   int32 rank_in,  rank_out;

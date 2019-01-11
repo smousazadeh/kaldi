@@ -726,11 +726,13 @@ class TdnnComponent: public UpdatableComponent {
                       be linear rather than affine in its input.
 
 
-     orthonormal-constraint=0.0  You can set this to -1 to enable a 'floating'
-                      orthonormal constraint on both parameters
-                      reduced_linear_params_ and block_basis_.  Will help
-                      stability a lot.  (Values >0 are also possible but not
-                      recommended).
+     orthonormal-constraint=0.0  Controls the orthonormal constraint on
+                      reduced_linear_params_ (e.g. set it to
+                      -1 to enable a 'floating' orthonormal constraint on
+                      reduced_linear_params_).
+     basis-orthonormal-constraint=-1  Controls the orthonormal constraint on
+                      block_basis_ (enabled by default because you will
+                      normally want this set).
 
 
    Initialization parameters inherited from TdnnComponent:
@@ -789,6 +791,17 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
   CuMatrixBase<BaseFloat> &ReducedLinearParams() { return reduced_linear_params_; }
   CuMatrixBase<BaseFloat> &BlockParams() { return block_basis_; }
 
+  BaseFloat BasisOrthonormalConstraint() const {
+    return basis_orthonormal_constraint_;
+  }
+
+  // This function computes the elements of linear_params_ (the base-class's
+  // member object) from the class members reduced_linear_params_ and
+  // block_basis_.  It requires linear_params_ to already be correctly sized.
+  // The only reason it's public, is that  it needs to be called in the
+  // code that sets the orthonormal constraints.
+  void ComputeLinearParams();
+
  private:
 
 
@@ -797,19 +810,13 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
   // This function, called from TdnnComponent::InitFromConfig(),
   // reads the configuration values:
   //    output-block-dim, input-block-dim, params-per-block,
-  //    param-stddev
+  //    param-stddev, basis-orthonormal-constraint
   // See comments in the implementation for further details,
   // e.g. on how param-stddev is interpreted.
   void InitLinearParams(int32 num_rows,
                         int32 num_cols,
                         ConfigLine *cfl) override;
 
-
-  // This function computes the elements of linear_params_ (the base-class's
-  // member object) from the class members reduced_linear_params_ and
-  // block_basis_.
-  // It requires linear_params_ to already be correctly sized.
-  void ComputeLinearParams();
 
   // Returns the num-cols of each block of parameters in linear_params_.
   inline int32 InputBlockDim() const {
@@ -916,6 +923,12 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
   // The InputBlockDim() and OutputBlockDim() are in order of larger
   // to smaller to stride (i.e. the input blocks are on consecutive rows).
   CuMatrix<BaseFloat> block_basis_;
+
+  // The orthonormal constraint on the basis.  Defaults to -1 which means,
+  // floating orthonormal constraint, since this is normally what you'll want.
+  // Not used inside this class, see nnet-utils.cc, call to
+  // BasisOrthonormalConstraint().
+  BaseFloat basis_orthonormal_constraint_;
 };
 
 
