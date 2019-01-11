@@ -621,17 +621,6 @@ void TdnnComponent::Add(BaseFloat alpha,
     bias_params_.AddVec(alpha, other->bias_params_);
 }
 
-void TdnnComponent::PerturbParams(BaseFloat stddev) {
-  CuMatrix<BaseFloat> temp_mat(linear_params_.NumRows(),
-                               linear_params_.NumCols(), kUndefined);
-  temp_mat.SetRandn();
-  linear_params_.AddMat(stddev, temp_mat);
-  if (bias_params_.Dim() != 0) {
-    CuVector<BaseFloat> temp_vec(bias_params_.Dim(), kUndefined);
-    temp_vec.SetRandn();
-    bias_params_.AddVec(stddev, temp_vec);
-  }
-}
 
 BaseFloat TdnnComponent::DotProduct(
     const UpdatableComponent &other_in) const {
@@ -720,19 +709,25 @@ BlockFactorizedTdnnComponent::BlockFactorizedTdnnComponent(
                                 kUndefined,
                                 kStrideEqualNumCols);
   reduced_linear_params_.CopyFromMat(other.reduced_linear_params_);
+  Check();
 }
 
 void BlockFactorizedTdnnComponent::MakeIntermediateParams(
     CuMatrixBase<BaseFloat> *intermediate_params) const {
-  CuSubMatrix<BaseFloat> linear_params_reshaped(reduced_linear_params_.Data(),
+  KALDI_ASSERT(reduced_linear_params_.Stride() ==
+               reduced_linear_params_.NumCols() &&
+               intermediate_params->Stride() ==
+               intermediate_params->NumCols());
+  CuSubMatrix<BaseFloat> reduced_reshaped(reduced_linear_params_.Data(),
                                      NumOutputBlocks() * NumInputBlocks(),
                                      ParamsPerBlock(),
                                      ParamsPerBlock());
-  CuSubMatrix<BaseFloat> intermediate_params_reshaped(intermediate_params->Data(),
-                                           NumOutputBlocks() * NumInputBlocks(),
-                                           OutputBlockDim() * InputBlockDim(),
-                                           OutputBlockDim() * InputBlockDim());
-  intermediate_params_reshaped.AddMatMat(1.0, linear_params_reshaped, kNoTrans,
+  CuSubMatrix<BaseFloat> intermediate_params_reshaped(
+      intermediate_params->Data(),
+      NumOutputBlocks() * NumInputBlocks(),
+      OutputBlockDim() * InputBlockDim(),
+      OutputBlockDim() * InputBlockDim());
+  intermediate_params_reshaped.AddMatMat(1.0, reduced_reshaped, kNoTrans,
                                          block_basis_, kTrans, 0.0);
 }
 
@@ -1000,6 +995,7 @@ void BlockFactorizedTdnnComponent::Read(std::istream &is, bool binary) {
   preconditioner_in_.SetUpdatePeriod(4);
   preconditioner_out_.SetUpdatePeriod(4);
   ExpectToken(is, binary, "</BlockFactorizedTdnnComponent>");
+  CreateIndexes();
   Check();
 }
 
@@ -1028,29 +1024,6 @@ void BlockFactorizedTdnnComponent::Add(BaseFloat alpha,
   ComputeLinearParams();
   if (bias_params_.Dim() != 0)
     bias_params_.AddVec(alpha, other->bias_params_);
-}
-
-void BlockFactorizedTdnnComponent::PerturbParams(BaseFloat stddev) {
-  {
-    CuMatrix<BaseFloat> temp_mat(reduced_linear_params_.NumRows(),
-                                 reduced_linear_params_.NumCols(),
-                                 kUndefined);
-    temp_mat.SetRandn();
-    reduced_linear_params_.AddMat(stddev, temp_mat);
-  }
-  {
-    CuMatrix<BaseFloat> temp_mat(block_basis_.NumRows(),
-                                 block_basis_.NumCols(),
-                                 kUndefined);
-    temp_mat.SetRandn();
-    block_basis_.AddMat(stddev, temp_mat);
-  }
-  ComputeLinearParams();
-  if (bias_params_.Dim() != 0) {
-    CuVector<BaseFloat> temp_vec(bias_params_.Dim(), kUndefined);
-    temp_vec.SetRandn();
-    bias_params_.AddVec(stddev, temp_vec);
-  }
 }
 
 BaseFloat BlockFactorizedTdnnComponent::DotProduct(
@@ -1108,15 +1081,272 @@ void BlockFactorizedTdnnComponent::UnVectorize(
 }
 
 void BlockFactorizedTdnnComponent::Check() const {
-  KALDI_ASSERT(linear_params_.NumRows() > 0 &&
-               !time_offsets_.empty() &&
-               std::set<int32>(time_offsets_.begin(),
-                               time_offsets_.end()).size() ==
-               time_offsets_.size() &&
-               linear_params_.NumCols() % time_offsets_.size() == 0 &&
-               (bias_params_.Dim() == 0 ||
-                bias_params_.Dim() == linear_params_.NumRows()));
+  // All the base-class checks apply.
+  TdnnComponent::Check();
+
+  int32 input_block_dim = InputBlockDim(),
+       output_block_dim = OutputBlockDim(),
+      params_per_block  = ParamsPerBlock(),
+       num_input_blocks = NumInputBlocks(),
+      num_output_blocks = NumOutputBlocks();
+
+
+  KALDI_ASSERT(
+      linear_params_.NumCols() == linear_params_.Stride() &&
+      reduced_linear_params_.NumCols() == reduced_linear_params_.Stride());
+
+  KALDI_ASSERT(
+      linear_params_.NumRows() == num_output_blocks * output_block_dim &&
+      linear_params_.NumCols() == num_input_blocks * input_block_dim &&
+      reduced_linear_params_.NumRows() == num_output_blocks &&
+      reduced_linear_params_.NumCols() == num_input_blocks * params_per_block &&
+      block_basis_.NumRows() == input_block_dim * output_block_dim &&
+      block_basis_.NumCols() == params_per_block);
+
+  KALDI_ASSERT(to_standard_indexes_.Dim() ==
+               num_input_blocks * output_block_dim * input_block_dim &&
+               to_intermediate_indexes_.Dim() == to_standard_indexes_.Dim());
 }
+
+
+void BlockFactorizedTdnnComponent::CreateIndexes() {
+
+  int32 input_block_dim = InputBlockDim(),
+       output_block_dim = OutputBlockDim(),
+       num_input_blocks = NumInputBlocks();
+
+  // The indexes to_standard_indexes_ and to_intermediate_indexes_
+  // are used in a call to CuMatrix::CopyCols() to do reordering of
+  // columns.
+  //
+  // For example, if j = to_standard_indexes_[i], i would be the index in the
+  // 'standard' form of the matrix and j would be the index in the
+  // 'intermediate' form (In this re-indexing, we are talking about groups of
+  // rows of the 'standard' matrix, with the num-groups equal to
+  // output_block_dim.  We do this CopyFromCols() on a reshaped matrix.
+  //
+  // The 'standard' form (and we are really talking about groups of 'output_block_dim' rows),
+  // has dimension (listing from greatest to least stride):
+  //       output_block_dim * num_input_blocks * input_block_dim
+  // and the 'intermediate' form has dimension (again from greatest to least
+  // stride)
+  //      num_input_blocks * output_block_dim * input_block_dim.
+
+  int32 dim = num_input_blocks * output_block_dim * input_block_dim;
+  std::vector<int32> to_standard(dim), to_intermediate(dim);
+  for (int32 input_block = 0; input_block < num_input_blocks; input_block++) {
+    for (int32 output_idx = 0; output_idx < output_block_dim; output_idx++) {
+      for (int32 input_idx = 0; input_idx < input_block_dim; input_idx++) {
+        int32 standard_index =
+            output_idx * num_input_blocks * input_block_dim +
+            input_block * input_block_dim +
+            input_idx,
+            intermediate_index =
+            input_block * output_block_dim * input_block_dim +
+            output_idx * input_block_dim +
+            input_idx;
+        to_standard[standard_index] = intermediate_index;
+        to_intermediate[intermediate_index] = standard_index;
+      }
+    }
+  }
+
+  KALDI_ASSERT(
+      std::count(to_standard.begin(), to_standard.end(), 0) == 1 &&
+      std::count(to_intermediate.begin(), to_intermediate.end(), 0) == 1);
+
+  to_standard_indexes_ = to_standard;
+  to_intermediate_indexes_ = to_intermediate;
+}
+
+
+void BlockFactorizedTdnnComponent::ConvertToStandard(
+    const CuMatrixBase<BaseFloat> &intermediate_params,
+    CuMatrixBase<BaseFloat> *linear_params) const {
+  KALDI_ASSERT(linear_params->NumCols() == linear_params->Stride());
+  int32 num_output_blocks = NumOutputBlocks(),
+         num_input_blocks = NumInputBlocks(),
+         output_block_dim = OutputBlockDim(),
+          input_block_dim = InputBlockDim();
+  CuSubMatrix<BaseFloat> linear_params_reshaped(
+      linear_params->Data(),
+      num_output_blocks,
+      num_input_blocks * output_block_dim * input_block_dim,
+      num_input_blocks * output_block_dim * input_block_dim);
+  linear_params_reshaped.CopyCols(intermediate_params,
+                                  to_standard_indexes_);
+}
+
+void BlockFactorizedTdnnComponent::ConvertToIntermediate(
+    const CuMatrixBase<BaseFloat> &linear_params,
+    CuMatrixBase<BaseFloat> *intermediate_params) const {
+  KALDI_ASSERT(linear_params.NumCols() == linear_params.Stride());
+  int32 num_output_blocks = NumOutputBlocks(),
+         num_input_blocks = NumInputBlocks(),
+         output_block_dim = OutputBlockDim(),
+          input_block_dim = InputBlockDim();
+  CuSubMatrix<BaseFloat> linear_params_reshaped(
+      linear_params.Data(),
+      num_output_blocks,
+      num_input_blocks * output_block_dim * input_block_dim,
+      num_input_blocks * output_block_dim * input_block_dim);
+  intermediate_params->CopyCols(linear_params_reshaped,
+                                to_intermediate_indexes_);
+}
+
+void BlockFactorizedTdnnComponent::ComputeLinearParams() {
+  int32 num_output_blocks = NumOutputBlocks(),
+         num_input_blocks = NumInputBlocks(),
+         output_block_dim = OutputBlockDim(),
+          input_block_dim = InputBlockDim();
+  CuMatrix<BaseFloat> intermediate_params(
+      num_output_blocks,
+      num_input_blocks * output_block_dim * input_block_dim,
+      kSetZero, kStrideEqualNumCols);
+  MakeIntermediateParams(&intermediate_params);
+  ConvertToStandard(intermediate_params, &linear_params_);
+}
+
+
+void BlockFactorizedTdnnComponent::Backprop(
+    const std::string &debug_info,
+    const ComponentPrecomputedIndexes *indexes_in,
+    const CuMatrixBase<BaseFloat> &in_value,
+    const CuMatrixBase<BaseFloat> &, // out_value
+    const CuMatrixBase<BaseFloat> &out_deriv,
+    void*, // memo
+    Component *to_update_in,
+    CuMatrixBase<BaseFloat> *in_deriv) const {
+  const PrecomputedIndexes *indexes =
+      dynamic_cast<const PrecomputedIndexes*>(indexes_in);
+  KALDI_ASSERT(indexes != NULL &&
+               indexes->row_offsets.size() == time_offsets_.size());
+  int32 num_offsets = time_offsets_.size(),
+      input_dim = InputDim();
+
+  if (in_deriv != NULL) {
+    // Propagate the derivatives back to the input data.  This
+    // block is the same as in TdnnComponent.
+    for (int32 i = 0; i < num_offsets; i++) {
+      CuSubMatrix<BaseFloat> in_deriv_part =
+          GetInputPart(*in_deriv, out_deriv.NumRows(),
+                       indexes->row_stride, indexes->row_offsets[i]);
+      CuSubMatrix<BaseFloat> linear_params_part(linear_params_,
+                                                0, linear_params_.NumRows(),
+                                                i * input_dim, input_dim);
+      // note: this component has the property kBackpropAdds, which is why the
+      // final 1.0 is there in the following call (otherwise we'd have to zero
+      // *in_deriv first).
+      in_deriv_part.AddMatMat(1.0, out_deriv, kNoTrans,
+                              linear_params_part, kNoTrans, 1.0);
+    }
+  }
+
+  if (to_update_in == NULL)
+    return;
+  BlockFactorizedTdnnComponent *to_update =
+      dynamic_cast<BlockFactorizedTdnnComponent*>(to_update_in);
+  BaseFloat learning_rate = to_update->learning_rate_;
+  if (learning_rate == 0.0)
+    return;
+
+  // We don't do natural gradient on the bias params, even if we're
+  // using natural gradient.  This is likely not a great loss.
+  if (bias_params_.Dim() != 0)
+    to_update->bias_params_.AddRowSumMat(learning_rate, out_deriv);
+
+  // We'll use to_update_->linear_params_ as a temporary to store the the
+  // derivative w.r.t. linear_params_, since it would not otherwise be used.
+  for (int32 i = 0; i < num_offsets; i++) {
+    CuSubMatrix<BaseFloat> in_value_part =
+        GetInputPart(in_value, out_deriv.NumRows(),
+                     indexes->row_stride,
+                     indexes->row_offsets[i]);
+    CuSubMatrix<BaseFloat> linear_params_part(
+        to_update->linear_params_,
+        0, to_update->linear_params_.NumRows(),
+        i * input_dim, input_dim);
+    linear_params_part.AddMatMat(1.0, out_deriv, kTrans,
+                                 in_value_part, kNoTrans, 0.0);
+  }
+
+  int32 num_output_blocks = NumOutputBlocks(),
+         num_input_blocks = NumInputBlocks(),
+         output_block_dim = OutputBlockDim(),
+          input_block_dim = InputBlockDim(),
+         params_per_block = ParamsPerBlock();
+  CuMatrix<BaseFloat> intermediate_deriv(
+      num_output_blocks,
+      num_input_blocks * output_block_dim * input_block_dim,
+      kSetZero, kStrideEqualNumCols);
+  // Change the format of the derivative so we can do the reshaping operation
+  // below.
+  ConvertToIntermediate(to_update->linear_params_, &intermediate_deriv);
+
+  CuSubMatrix<BaseFloat> reduced_params_reshaped(
+          this->reduced_linear_params_.Data(),
+          num_output_blocks * num_input_blocks,
+          params_per_block, params_per_block),
+      intermediate_deriv_reshaped(
+          intermediate_deriv.Data(),
+          NumOutputBlocks() * NumInputBlocks(),
+          OutputBlockDim() * InputBlockDim(),
+          OutputBlockDim() * InputBlockDim());
+
+  // compute deriv w.r.t. block_basis_.  We don't support any natural gradient
+  // here (the dimension of this parameter is probably quite small so there is
+  // less potential for it to help).
+  to_update->block_basis_.AddMatMat(
+      learning_rate,
+      intermediate_deriv_reshaped, kTrans,
+      reduced_params_reshaped, kNoTrans, 1.0);
+
+  // The rest of this code updates to_update_->reduced_linear_params_.
+  // It's a little complex because of the support for natural gradient.
+  if (!to_update->is_gradient_ && use_natural_gradient_) {
+    CuMatrix<BaseFloat> reduced_deriv(
+        num_output_blocks, num_input_blocks * params_per_block,
+        kSetZero, kStrideEqualNumCols);
+
+    CuSubMatrix<BaseFloat> reduced_deriv_reshaped(
+        reduced_deriv.Data(),
+        num_output_blocks * num_input_blocks,
+        params_per_block, params_per_block);
+
+    reduced_deriv_reshaped.AddMatMat(
+        1.0, intermediate_deriv_reshaped, kNoTrans,
+        block_basis_, kNoTrans, 0.0);
+
+    // We'll precondition reduced_deriv_ using preconditioner_in_ and
+    // preconditioner_out_.  preconditioner_in_ operates on the rows of
+    // reduced_deriv (dimension == num_input_blocks * params_per_block).  It
+    // would probably be more ideal to have it operate just on the space of
+    // dimension num_input_blocks, but code-wise that would be hassle.
+    // preconditioner_out operates on the columns of reduced_deriv
+    // (dimension == num_output_blocks) .
+    BaseFloat scale1, scale2;
+    to_update->preconditioner_in_.PreconditionDirections(&reduced_deriv,
+                                                         &scale1);
+    CuMatrix<BaseFloat> reduced_deriv_trans(reduced_deriv, kTrans);
+    to_update->preconditioner_out_.PreconditionDirections(&reduced_deriv_trans,
+                                                          &scale2);
+    to_update->reduced_linear_params_.AddMat(
+        learning_rate * scale1 * scale2,
+        reduced_deriv_trans, kTrans);
+  } else {
+    CuSubMatrix<BaseFloat> reduced_deriv_reshaped(
+        to_update->reduced_linear_params_.Data(),
+        num_output_blocks * num_input_blocks,
+        params_per_block, params_per_block);
+    // compute deriv w.r.t. reduced_linear_params_
+    reduced_deriv_reshaped.AddMatMat(
+        learning_rate,
+        intermediate_deriv_reshaped, kNoTrans,
+        block_basis_, kNoTrans,
+        1.0);
+  }
+}
+
 
 
 } // namespace nnet3

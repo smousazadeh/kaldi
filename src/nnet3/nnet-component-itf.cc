@@ -139,6 +139,8 @@ Component* Component::NewComponentOfType(const std::string &component_type) {
     ans = new ConvolutionComponent();
   } else if (component_type == "TdnnComponent") {
     ans = new TdnnComponent();
+  } else if (component_type == "BlockFactorizedTdnnComponent") {
+    ans = new BlockFactorizedTdnnComponent();
   } else if (component_type == "MaxpoolingComponent") {
     ans = new MaxpoolingComponent();
   } else if (component_type == "PermuteComponent") {
@@ -340,6 +342,15 @@ std::string UpdatableComponent::Info() const {
   if (max_change_ > 0.0)
     stream << ", max-change=" << max_change_;
   return stream.str();
+}
+
+void UpdatableComponent::PerturbParams(BaseFloat stddev) {
+  Vector<BaseFloat> params(NumParameters(), kUndefined),
+      delta(NumParameters(), kUndefined);
+  Vectorize(&params);
+  delta.SetRandn();
+  params.AddVec(stddev, delta);
+  UnVectorize(params);
 }
 
 void NonlinearComponent::StoreStatsInternal(

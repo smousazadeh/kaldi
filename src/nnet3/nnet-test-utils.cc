@@ -1400,7 +1400,7 @@ void ComputeExampleComputationRequestSimple(
 static void GenerateRandomComponentConfig(std::string *component_type,
                                           std::string *config) {
 
-  int32 n = RandInt(0, 37);
+  int32 n = RandInt(0, 38);
   BaseFloat learning_rate = 0.001 * RandInt(1, 100);
 
   std::ostringstream os;
@@ -1771,6 +1771,24 @@ static void GenerateRandomComponentConfig(std::string *component_type,
       os << "cell-dim=" << RandInt(10, 20)
          << " learning-rate=" << learning_rate;
 
+      break;
+    }
+    case 38: {
+      // This is not technically a SimpleComponent, but it behaves as one
+      // if time-offsets=0.
+      *component_type = "BlockFactorizedTdnnComponent";
+      int32 input_block_dim = RandInt(2, 5),
+           output_block_dim = RandInt(2, 5),
+           params_per_block = RandInt(2, 5),
+                  input_dim = RandInt(1, 20) * input_block_dim,
+                 output_dim = RandInt(1, 20) * output_block_dim;
+      os << "input-dim=" << input_dim << " output-dim=" << output_dim
+         << " input-block-dim=" << input_block_dim
+         << " output-block-dim=" << output_block_dim
+         << " params-per-block=" << params_per_block
+         << " learning-rate=" << learning_rate << " time-offsets=0"
+         << " use-natural-gradient=" << (RandInt(0,1) == 0 ? "true":"false")
+         << " use-bias=" << (RandInt(0,1) == 0 ? "true":"false");
       break;
     }
     default:

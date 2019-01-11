@@ -471,7 +471,8 @@ class UpdatableComponent: public Component {
 
   /// This function is to be used in testing.  It adds unit noise times "stddev"
   /// to the parameters of the component.
-  virtual void PerturbParams(BaseFloat stddev) = 0;
+  /// We provide a default implementation so it does not have to be overridden,
+  virtual void PerturbParams(BaseFloat stddev);
 
   /// Sets the learning rate of gradient descent- gets multiplied by
   /// learning_rate_factor_.

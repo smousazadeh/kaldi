@@ -456,34 +456,34 @@ class TdnnComponent: public UpdatableComponent {
   // Copy constructor
   TdnnComponent(const TdnnComponent &other);
 
-  virtual int32 InputDim() const {
+  int32 InputDim() const override {
     return linear_params_.NumCols() / static_cast<int32>(time_offsets_.size());
   }
-  virtual int32 OutputDim() const { return linear_params_.NumRows(); }
+  int32 OutputDim() const override { return linear_params_.NumRows(); }
 
-  virtual std::string Info() const;
-  virtual void InitFromConfig(ConfigLine *cfl);
-  virtual std::string Type() const { return "TdnnComponent"; }
-  virtual int32 Properties() const {
+  std::string Info() const override;
+  void InitFromConfig(ConfigLine *cfl) override;
+  std::string Type() const override { return "TdnnComponent"; }
+  int32 Properties() const override {
     return kUpdatableComponent|kReordersIndexes|kBackpropAdds|
         (bias_params_.Dim() == 0 ? kPropagateAdds : 0)|
         kBackpropNeedsInput;
   }
-  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
-                         const CuMatrixBase<BaseFloat> &in,
-                         CuMatrixBase<BaseFloat> *out) const;
-  virtual void Backprop(const std::string &debug_info,
-                        const ComponentPrecomputedIndexes *indexes,
-                        const CuMatrixBase<BaseFloat> &in_value,
-                        const CuMatrixBase<BaseFloat> &out_value,
-                        const CuMatrixBase<BaseFloat> &out_deriv,
-                        void *memo,
-                        Component *to_update,
-                        CuMatrixBase<BaseFloat> *in_deriv) const;
+  void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                  const CuMatrixBase<BaseFloat> &in,
+                  CuMatrixBase<BaseFloat> *out) const override;
+  void Backprop(const std::string &debug_info,
+                const ComponentPrecomputedIndexes *indexes,
+                const CuMatrixBase<BaseFloat> &in_value,
+                const CuMatrixBase<BaseFloat> &out_value,
+                const CuMatrixBase<BaseFloat> &out_deriv,
+                void *memo,
+                Component *to_update,
+                CuMatrixBase<BaseFloat> *in_deriv) const override;
 
-  virtual void Read(std::istream &is, bool binary);
-  virtual void Write(std::ostream &os, bool binary) const;
-  virtual Component* Copy() const {
+  void Read(std::istream &is, bool binary) override;
+  void Write(std::ostream &os, bool binary) const override;
+  Component* Copy() const override {
     return new TdnnComponent(*this);
   }
 
@@ -493,35 +493,34 @@ class TdnnComponent: public UpdatableComponent {
   // This ReorderIndexes function may insert 'blank' indexes (indexes with
   // t == kNoTime) as well as reordering the indexes.  This is allowed
   // behavior of ReorderIndexes functions.
-  virtual void ReorderIndexes(std::vector<Index> *input_indexes,
-                              std::vector<Index> *output_indexes) const;
+  void ReorderIndexes(std::vector<Index> *input_indexes,
+                      std::vector<Index> *output_indexes) const override;
 
-  virtual void GetInputIndexes(const MiscComputationInfo &misc_info,
-                               const Index &output_index,
-                               std::vector<Index> *desired_indexes) const;
+  void GetInputIndexes(const MiscComputationInfo &misc_info,
+                       const Index &output_index,
+                       std::vector<Index> *desired_indexes) const override;
 
   // This function returns true if at least one of the input indexes used to
   // compute this output index is computable.
-  virtual bool IsComputable(const MiscComputationInfo &misc_info,
-                            const Index &output_index,
-                            const IndexSet &input_index_set,
-                            std::vector<Index> *used_inputs) const;
+  bool IsComputable(const MiscComputationInfo &misc_info,
+                    const Index &output_index,
+                    const IndexSet &input_index_set,
+                    std::vector<Index> *used_inputs) const override;
 
-  virtual ComponentPrecomputedIndexes* PrecomputeIndexes(
+  ComponentPrecomputedIndexes* PrecomputeIndexes(
       const MiscComputationInfo &misc_info,
       const std::vector<Index> &input_indexes,
       const std::vector<Index> &output_indexes,
-      bool need_backprop) const;
+      bool need_backprop) const override;
 
   // Some functions from base-class UpdatableComponent.
-  virtual void Scale(BaseFloat scale);
-  virtual void Add(BaseFloat alpha, const Component &other);
-  virtual void PerturbParams(BaseFloat stddev);
-  virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
-  virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
-  virtual void FreezeNaturalGradient(bool freeze);
+  void Scale(BaseFloat scale) override;
+  void Add(BaseFloat alpha, const Component &other) override;
+  BaseFloat DotProduct(const UpdatableComponent &other) const override;
+  int32 NumParameters() const override;
+  void Vectorize(VectorBase<BaseFloat> *params) const override;
+  void UnVectorize(const VectorBase<BaseFloat> &params) override;
+  void FreezeNaturalGradient(bool freeze) override;
 
 
   class PrecomputedIndexes: public ComponentPrecomputedIndexes {
@@ -594,18 +593,25 @@ class TdnnComponent: public UpdatableComponent {
 
   void Check() const;
 
-  // Function that updates linear_params_, and bias_params_ if present, which
-  // uses the natural gradient code.
-  // Virtual because it's overridden by child class BlockFactorizedTdnnComponent.
-  virtual void UpdateNaturalGradient(
+  /**
+    Function that updates linear_params_, and bias_params_ if present, which
+    uses the natural gradient code.
+       @param [in] indexes   The indexes that describe the structure of the
+                       inputs and outputs.
+       @param [in] in_value  The input to this component, e.g. as given to
+                      Propagate()
+       @param [in] out_value  The derivative of the objective function w.r.t. the
+                     output of this component.
+  */
+  void UpdateNaturalGradient(
       const PrecomputedIndexes &indexes,
       const CuMatrixBase<BaseFloat> &in_value,
       const CuMatrixBase<BaseFloat> &out_deriv);
 
-  // Function that updates linear_params_, and bias_params_ if present, which
-  // does not use the natural gradient code.
-  // Virtual because it's overridden by child class BlockFactorizedTdnnComponent.
-  virtual void UpdateSimple(
+  /** Function that updates linear_params_, and bias_params_ if present, which
+      does not use the natural gradient code.  The interface is the same as
+      UpdateNaturalGradient().  */
+  void UpdateSimple(
       const PrecomputedIndexes &indexes,
       const CuMatrixBase<BaseFloat> &in_value,
       const CuMatrixBase<BaseFloat> &out_deriv);
@@ -757,7 +763,15 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
   std::string Info() const override;
   std::string Type() const override { return "BlockFactorizedTdnnComponent"; }
 
-  // Propagate() and Backprop() are inherited from class TdnnComponent.
+  // Propagate() is inherited from class TdnnComponent.
+  void Backprop(const std::string &debug_info,
+                const ComponentPrecomputedIndexes *indexes,
+                const CuMatrixBase<BaseFloat> &in_value,
+                const CuMatrixBase<BaseFloat> &out_value,
+                const CuMatrixBase<BaseFloat> &out_deriv,
+                void *memo,
+                Component *to_update,
+                CuMatrixBase<BaseFloat> *in_deriv) const override;
 
   void Read(std::istream &is, bool binary) override;
   void Write(std::ostream &os, bool binary) const override;
@@ -766,7 +780,6 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
   }
   void Scale(BaseFloat scale) override;
   void Add(BaseFloat alpha, const Component &other) override;
-  void PerturbParams(BaseFloat stddev) override;
   BaseFloat DotProduct(const UpdatableComponent &other) const override;
   int32 NumParameters() const override;
   void Vectorize(VectorBase<BaseFloat> *params) const override;
@@ -777,6 +790,7 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
   CuMatrixBase<BaseFloat> &BlockParams() { return block_basis_; }
 
  private:
+
 
   void Check() const;
 
@@ -845,15 +859,41 @@ class BlockFactorizedTdnnComponent: public TdnnComponent {
       CuMatrixBase<BaseFloat> *intermediate_params) const;
 
 
+  /**
+    Function that updates linear_params_, and bias_params_ if present, which
+    uses the natural gradient code (the natural gradient is only used for
+    reduced_linear_params_).
+                       The component corresponding to the model parameters
+                       ('this' corresponds to the derivative_.
+       @param [in] indexes   The indexes that describe the structure of the
+                       inputs and outputs.
+       @param [in] in_value  The input to this component, e.g. as given to
+                      Propagate()
+       @param [in] out_value  The derivative of the objective function w.r.t. the
+                     output of this component.
+  */
+  void UpdateNaturalGradient(
+      const BlockFactorizedTdnnComponent &model_component,
+      const PrecomputedIndexes &indexes,
+      const CuMatrixBase<BaseFloat> &in_value,
+      const CuMatrixBase<BaseFloat> &out_deriv);
 
+  /** Function that updates linear_params_, and bias_params_ if present, which
+      does not use the natural gradient code.  The interface is the same as
+      UpdateNaturalGradient().  */
+  void UpdateSimple(
+      const BlockFactorizedTdnnComponent &model_component,
+      const PrecomputedIndexes &indexes,
+      const CuMatrixBase<BaseFloat> &in_value,
+      const CuMatrixBase<BaseFloat> &out_deriv);
 
   // Sets up the arrays to_final_indexes_ and to_intermediate_indexes_.
   void CreateIndexes();
 
-  // Used in ConvertToStandardForm(), set up by CreateIndexes();
+  // Used in ConvertToStandard(), set up by CreateIndexes();
   CuArray<int32> to_standard_indexes_;
 
-  // Used in ConvertToIntermediateForm(), set up by CreateIndexes().
+  // Used in ConvertToIntermediate(), set up by CreateIndexes().
   CuArray<int32> to_intermediate_indexes_;
 
 
