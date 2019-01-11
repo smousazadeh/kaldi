@@ -850,7 +850,7 @@ void BlockFactorizedTdnnComponent::InitLinearParams(
        params_per_block = -1;
 
   bool ok = cfl->GetValue("input-block-dim", &input_block_dim) &&
-      cfl->GetValue("output-block-dim", &input_block_dim) &&
+      cfl->GetValue("output-block-dim", &output_block_dim) &&
       cfl->GetValue("params-per-block", &params_per_block);
   if (!ok || num_cols % input_block_dim != 0 ||
       num_rows % output_block_dim != 0 ||
@@ -886,9 +886,10 @@ void BlockFactorizedTdnnComponent::InitLinearParams(
   reduced_linear_params_.SetRandn();
   reduced_linear_params_.Scale(sigma_r);
 
-  linear_params_.Resize(num_rows, num_cols);
+  linear_params_.Resize(num_rows, num_cols, kUndefined, kStrideEqualNumCols);
 
   // set up linear_params_.
+  CreateIndexes();
   ComputeLinearParams();
 
   KALDI_ASSERT(linear_params_.NumRows() == num_rows &&
@@ -915,6 +916,8 @@ void BlockFactorizedTdnnComponent::Write(std::ostream &os, bool binary) const {
   reduced_linear_params_.Write(os, binary);
   WriteToken(os, binary, "<BlockBasis>");
   block_basis_.Write(os, binary);
+  WriteToken(os, binary, "<InputBlockDim>");
+  WriteBasicType(os, binary, InputBlockDim());
   WriteToken(os, binary, "<BiasParams>");
   bias_params_.Write(os, binary);
   WriteToken(os, binary, "<OrthonormalConstraint>");
@@ -966,7 +969,8 @@ void BlockFactorizedTdnnComponent::Read(std::istream &is, bool binary) {
        num_output_blocks = reduced_linear_params_.NumRows();
   linear_params_.Resize(num_output_blocks * output_block_dim,
                         num_input_blocks * input_block_dim,
-                        kUndefined);
+                        kUndefined, kStrideEqualNumCols);
+  CreateIndexes();
   ComputeLinearParams();
   ExpectToken(is, binary, "<BiasParams>");
   bias_params_.Read(is, binary);
