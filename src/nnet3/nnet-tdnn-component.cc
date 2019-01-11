@@ -873,7 +873,7 @@ void BlockFactorizedTdnnComponent::InitLinearParams(
 
   // We are implementing what's described in the math above.
   // sigma_g is the geometric mean of the stddevs sigma_t and sigma_r.
-  BaseFloat sigma_g = sqrt(params_per_block) * pow(params_per_block, -0.25),
+  BaseFloat sigma_g = sqrt(param_stddev) * pow(params_per_block, -0.25),
                   q = pow(num_input_blocks * num_output_blocks * 1.0 /
                           (input_block_dim * output_block_dim), 0.125),
             sigma_t = sigma_g * q,
