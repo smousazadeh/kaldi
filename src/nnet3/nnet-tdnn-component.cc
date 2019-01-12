@@ -736,6 +736,7 @@ void BlockFactorizedTdnnComponent::MakeIntermediateParams(
 std::string BlockFactorizedTdnnComponent::Info() const {
   std::ostringstream stream;
   stream << TdnnComponent::Info()
+         << ", basis-orthonormal-constraint=" << basis_orthonormal_constraint_
          << ", input-block-dim" << InputBlockDim()
          << ", output-block-dim=" << OutputBlockDim()
          << ", params-per-block=" << ParamsPerBlock();
