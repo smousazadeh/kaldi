@@ -30,6 +30,7 @@ NnetComputer::NnetComputer(const NnetComputeOptions &options,
                            const Nnet &nnet,
                            Nnet *nnet_to_update):
     options_(options), computation_(computation), nnet_(nnet),
+    class_labels_(NULL),
     program_counter_(0), nnet_to_store_stats_(nnet_to_update),
     nnet_to_update_(nnet_to_update) {
   Init();
@@ -38,8 +39,10 @@ NnetComputer::NnetComputer(const NnetComputeOptions &options,
 NnetComputer::NnetComputer(const NnetComputeOptions &options,
                            const NnetComputation &computation,
                            Nnet *nnet,
-                           Nnet *nnet_to_update):
+                           Nnet *nnet_to_update,
+                           const ClassLabels *class_labels):
     options_(options), computation_(computation), nnet_(*nnet),
+    class_labels_(class_labels),
     program_counter_(0), nnet_to_store_stats_(nnet),
     nnet_to_update_(nnet_to_update) {
   Init();
@@ -190,6 +193,7 @@ NnetComputer::NnetComputer(const NnetComputer &other):
     options_(other.options_),
     computation_(other.computation_),
     nnet_(other.nnet_),
+    class_labels_(other.class_labels_),
     program_counter_(other.program_counter_),
     pending_commands_(other.pending_commands_),
     nnet_to_store_stats_(other.nnet_to_store_stats_),
@@ -240,7 +244,10 @@ void NnetComputer::ExecuteCommand() {
             computation_.component_precomputed_indexes[c.arg2].data;
         const CuSubMatrix<BaseFloat> input(GetSubMatrix(c.arg3));
         CuSubMatrix<BaseFloat> output(GetSubMatrix(c.arg4));
-        void *memo = component->Propagate(indexes, input, &output);
+        void *memo =
+            (class_labels_ != NULL ?
+             component->Propagate(*class_labels_, indexes, input, &output) :
+             component->Propagate(indexes, input, &output));
         if (c.arg6) {  // need to store stats.
           KALDI_ASSERT(nnet_to_store_stats_ != NULL);
           Component *stats_component = nnet_to_store_stats_->GetComponent(c.arg1);

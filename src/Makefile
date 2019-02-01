@@ -172,7 +172,7 @@ cudamatrix: base util matrix
 adapt: base util matrix hmm cudamatrix
 nnet: base util hmm tree matrix cudamatrix
 nnet2: base util matrix lat gmm hmm tree transform cudamatrix
-nnet3: base util matrix lat gmm hmm tree transform cudamatrix chain fstext
+nnet3: base util matrix lat gmm hmm tree transform cudamatrix adapt chain fstext
 nnet3a: base util matrix lat gmm hmm tree transform cudamatrix adapt nnet3 chain fstext
 rnnlm: base util matrix cudamatrix nnet3 lm hmm
 chain: lat hmm tree fstext matrix cudamatrix util base

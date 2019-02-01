@@ -31,12 +31,12 @@ OBJFILES = nnet-common.o nnet-compile.o nnet-component-itf.o \
   nnet-compile-looped.o decodable-simple-looped.o \
   decodable-online-looped.o convolution.o \
   nnet-convolutional-component.o attention.o \
-  nnet-attention-component.o nnet-tdnn-component.o nnet-batch-compute.o
-
+  nnet-attention-component.o nnet-tdnn-component.o nnet-batch-compute.o \
+  nnet-adaptation-component.o
 
 LIBNAME = kaldi-nnet3
 
-ADDLIBS = ../chain/kaldi-chain.a ../cudamatrix/kaldi-cudamatrix.a \
+ADDLIBS = ../chain/kaldi-chain.a ../adapt/kaldi-adapt.a ../cudamatrix/kaldi-cudamatrix.a \
           ../decoder/kaldi-decoder.a ../lat/kaldi-lat.a \
           ../fstext/kaldi-fstext.a ../hmm/kaldi-hmm.a \
           ../transform/kaldi-transform.a ../gmm/kaldi-gmm.a \

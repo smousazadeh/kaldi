@@ -79,14 +79,6 @@ struct NnetChainSupervision {
   /// to disk compactly as unsigned char.
   Vector<BaseFloat> deriv_weights;
 
-  /// This will be 1 in normal cases, but in the 'chaina' code (chain training
-  /// with adaptation) it will be set to the number of chunks/sequences per
-  /// group in this minibatch (the chunks from a particular group are expected
-  /// to come from the same speaker).  For example if it's 4, then we are
-  /// asserting that sequences n=0 through 3 all come from the same speaker, n=4
-  /// through 7 all come from the same speaker, and so on.
-  int32 chunks_per_group;
-
   // Use default assignment operator
 
   NnetChainSupervision() { }
@@ -129,6 +121,10 @@ struct NnetChainExample {
   /// be just one member with name == "output".
   std::vector<NnetChainSupervision> outputs;
 
+  /// This is only used where we are using the adaptation framework associated with
+  /// nnet-adaptation-component.h.  Otherwise it will be empty.
+  ClassLabels class_labels;
+
   /// This relates to the '--use-query-string' option for merging. Examples
   /// with different values of 'bucket' won't be merged together. Note that
   /// this member variable is not written or read (in the Write/Read functions)
@@ -148,7 +144,8 @@ struct NnetChainExample {
   NnetChainExample(const NnetChainExample &other);
 
   bool operator == (const NnetChainExample &other) const {
-    return inputs == other.inputs && outputs == other.outputs;
+    return inputs == other.inputs && outputs == other.outputs &&
+        class_labels == other.class_labels;
   }
 };
 

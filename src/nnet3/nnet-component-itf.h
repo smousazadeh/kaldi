@@ -131,6 +131,23 @@ class Component {
                           const CuMatrixBase<BaseFloat> &in,
                           CuMatrixBase<BaseFloat> *out) const = 0;
 
+  /// This version of Propagate() allows the framework to provide class labels for
+  /// class-aware feature/activation transformations.  These labels will generally
+  /// derive from a previous decoding pass.  This is the version of Propagate() that
+  /// is called in the computation framework, but it will normally just call the
+  /// version of propagate that doesn't have the 'labels' argument, which will
+  /// be overridden by the class.  Only classes that actually need the labels will
+  /// override this version.  Note: we assume that the labels will remain fixed until
+  /// the backprop (if any) is called, so if the backprop code needs the labels, we can
+  /// just store a pointer to them in the memo.
+  virtual void* Propagate(const ClassLabels &labels,
+                          const ComponentPrecomputedIndexes *indexes,
+                          const CuMatrixBase<BaseFloat> &in,
+                          CuMatrixBase<BaseFloat> *out) const {
+    return Propagate(indexes, in, out);
+  }
+
+
   /// \brief Backprop function; depending on which of the arguments 'to_update'
   ///     and 'in_deriv' are non-NULL, this can compute input-data derivatives
   ///     and/or perform model update.

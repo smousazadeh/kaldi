@@ -74,10 +74,13 @@ class NnetComputer {
   /// of a const reference.  The difference is that this version will,
   /// for storing statistics (the StoreStats() function of class Component),
   /// use 'nnet' instead of 'nnet_to_update' (if specified).
+  /// This version also allows you to pass in 'class_labels' which is
+  /// for our adaptation framework.
   NnetComputer(const NnetComputeOptions &options,
                const NnetComputation &computation,
                Nnet *nnet,
-               Nnet *nnet_to_update);
+               Nnet *nnet_to_update,
+               const ClassLabels *class_labels = NULL);
 
 
   /// Copy constructor.  May not be used if memos are stored with this object
@@ -132,6 +135,9 @@ class NnetComputer {
   const NnetComputeOptions &options_;
   const NnetComputation &computation_;
   const Nnet &nnet_;
+  // This may be NULL; if not, it's used in our adaptation framework.
+  // The pointer is not owned here.
+  const ClassLabels *class_labels_;
 
   int32 program_counter_;  // command index to execute next.
   // To deal with inputs and outputs that are not provided/taken by the user in

@@ -26,6 +26,7 @@
 #include "itf/options-itf.h"
 #include "matrix/matrix-lib.h"
 #include "cudamatrix/cu-matrix-lib.h"
+#include "hmm/posterior.h"
 
 #include <iostream>
 
@@ -184,6 +185,77 @@ std::ostream &operator << (std::ostream &ostream, const Cindex &cindex);
 class Component;
 class Nnet;
 struct MiscComputationInfo;
+
+/**
+   This struct represents a set of posteriors (labels, or soft labels).
+   These will generally be used to classify frames at the input of a network
+   into fairly broad phonetic classes.  This will be provided during the
+   forward propagation of certain components to enable them to
+   do feature activations/transformations that depend on class level
+   information (such as fMLLR, or class-aware mean normalization).
+ */
+struct ClassLabels {
+  // The number of classes in the supervision info; the integers in 'post' will
+  // be in the range [0, num_classes - 1].  Will generally be derived from a
+  // two level tree.
+  int32 num_classes;
+
+  // The first 't' value represented in these labels (i.e. the 't' value of the
+  // first element of 'post'... will often be zero or close to zero.
+  int32 first_t;
+
+  // The stride of the 't' values.. will generally be 1 or 3.
+  int32 t_stride;
+
+  // The number of chunks present in 'post' (all chunks are expected to be the
+  // same size).  The number of 't' values in each chunk is post.size() /
+  // num_chunks.
+  int32 num_chunks;
+
+  // The number of speakers; must divide num_chunks, and the chunks per speaker are expected
+  // to be consecutive.
+  int32 num_spk;
+
+  ClassLabels(): num_classes(0), first_t(0), t_stride(0), num_chunks(0),
+                 num_spk(0) { }
+
+  // This == operator only test structural equality, i.e. that the dimensions
+  // are the same.
+  bool operator == (const ClassLabels &other) const;
+
+  // The posteriors, representing the class labels or soft-counts.  The order of
+  // elements is: first frame of all chunks; then the second frame of all chunks;
+  // and so on.
+  Posterior post;
+
+
+  void Write(std::ostream &os, bool binary) const;
+  void Read(std::istream &is, bool binary);
+};
+
+
+/**
+   This function is responsible for dealing with downsampling or upsampling
+   on the class labels, and changing the 't' boundaries.
+
+   The elements num_classes, first_t, t_stride, num_chunks, num_spk, and
+   the size of 'post', are expected to be set up in 'modified_labels'; these
+   tell this function what the desired size is.  The elements inside
+   modified_labels->post are expected to be empty though.
+ */
+void ResampleClassLabels(const ClassLabels &class_labels,
+                         ClassLabels *modified_labels);
+
+/**
+   Merge the class labels across multiple members of a minibatch, which must
+   have the same structure.  If merging individual examples we assume the
+   group is for a single speaker, but if merging previously-merged examples
+   we assume each group was for a separate speaker.
+ */
+void MergeClassLabels(std::vector<const ClassLabels*> &class_labels_in,
+                      ClassLabels *class_labels_out);
+
+
 
 } // namespace nnet3
 } // namespace kaldi

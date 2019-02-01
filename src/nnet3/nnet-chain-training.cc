@@ -100,7 +100,7 @@ void NnetChainTrainer::TrainInternal(const NnetChainExample &eg,
   // constructor of 'computer', it will use that copy of the nnet to
   // store stats.
   NnetComputer computer(nnet_config.compute_config, computation,
-                        nnet_, delta_nnet_);
+                        nnet_, delta_nnet_, &(eg.class_labels));
 
   // give the inputs to the computer object.
   computer.AcceptInputs(*nnet_, eg.inputs);
@@ -146,7 +146,7 @@ void NnetChainTrainer::TrainInternalBackstitch(const NnetChainExample &eg,
   // constructor of 'computer', it will use that copy of the nnet to
   // store stats.
   NnetComputer computer(nnet_config.compute_config, computation,
-                        nnet_, delta_nnet_);
+                        nnet_, delta_nnet_, &(eg.class_labels));
   // give the inputs to the computer object.
   computer.AcceptInputs(*nnet_, eg.inputs);
   computer.Run();

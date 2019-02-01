@@ -126,6 +126,64 @@ class XconfigBatchnormComponent(XconfigLayerBase):
         return configs
 
 
+class XconfigAdaptationComponent(XconfigLayerBase):
+    """This class is for parsing lines like
+     'adaptation-component name=adapt_input num-classes=200 config-file=foo/bar.txt'
+    which will produce just a single component, of type AdaptationComponent.
+
+    Parameters of the class, and their defaults:
+      input='[-1]'             [Descriptor giving the input of the layer.]
+      num-classes              [Number of classes the transform will use]
+      config-file              [Text file to initialize the adaptation model.]
+    """
+    def __init__(self, first_token, key_to_value, prev_names=None):
+        XconfigLayerBase.__init__(self, first_token, key_to_value, prev_names)
+
+    def set_default_configs(self):
+        self.config = {'input': '[-1]',
+                       'num-classes': -1,
+                       'config-file': '' }
+
+    def check_configs(self):
+        assert self.config['num-classes'] > 0 and self.config['config-file'] != ''
+
+    def output_name(self, auxiliary_output=None):
+        assert auxiliary_output is None
+        return self.name
+
+    def output_dim(self, auxiliary_output=None):
+        assert auxiliary_output is None
+        input_dim = self.descriptors['input']['dim']
+        return input_dim
+
+    def get_full_config(self):
+        ans = []
+        config_lines = self._generate_config()
+
+        for line in config_lines:
+            for config_name in ['ref', 'final']:
+                # we do not support user specified matrices in this layer
+                # so 'ref' and 'final' configs are the same.
+                ans.append((config_name, line))
+        return ans
+
+    def _generate_config(self):
+        # by 'descriptor_final_string' we mean a string that can appear in
+        # config-files, i.e. it contains the 'final' names of nodes.
+        input_desc = self.descriptors['input']['final-string']
+        num_classes = self.config['num-classes']
+        config_file = self.config['config-file']
+
+        configs = []
+        line = ('component name={0} type=AdaptationComponent num-classes={1} config-file={2}'.format(
+            self.name, num_classes, config_file))
+        configs.append(line)
+        line = ('component-node name={0} component={0} input={1}'.format(
+            self.name, input_desc))
+        configs.append(line)
+        return configs
+
+
 class XconfigNoOpComponent(XconfigLayerBase):
     """This class is for parsing lines like
      'no-op-component name=noop1 input=Append(-3,0,3)'

@@ -415,7 +415,7 @@ size_t IndexVectorHasher::operator () (
     ans += iter->x * 89809;
     // The following if-statement was introduced in order to fix an
     // out-of-range iterator problem on Windows.
-    if (n2 > len || iter >= end - n2) 
+    if (n2 > len || iter >= end - n2)
         break;
   }
   return ans;
@@ -569,8 +569,131 @@ void PrintIntegerVector(std::ostream &os,
   os << "]";
 }
 
+
+
+// This is a helper function for ResampleClassLabels().  It helps us to look up
+// the right place in the source labels for a particular 't' value; it returns
+// either -1 if the 't' value is outside the range covered by 'class_labels',
+// or, otherwise an offset into class_labels->post which represents the
+// corresponding element for n=0 (the first chunk).  Elements for other chunks
+// will immediatly follow the returned index.
+static int32 FindSrcOffset(const ClassLabels &class_labels,
+                           int32 t) {
+  int32 num_t_values =
+      int32(class_labels.post.size() / size_t(class_labels.num_chunks));
+  int32 raw_t_offset = t - class_labels.first_t;
+  if (raw_t_offset < 0)
+    return -1;
+  // below, we add class_labels.t_stride / 2 before rounding because we want
+  // round-to-closest, not round down.
+  int32 t_offset =
+      (raw_t_offset + (class_labels.t_stride / 2)) / class_labels.t_stride;
+  if (t_offset >= num_t_values)
+    return -1;
+  return t_offset * class_labels.num_chunks;
+}
+
+void ResampleClassLabels(const ClassLabels &class_labels,
+                         ClassLabels *modified_labels) {
+  KALDI_ASSERT(class_labels.num_classes == modified_labels->num_classes &&
+               class_labels.num_chunks == modified_labels->num_chunks &&
+               modified_labels->t_stride > 0 && class_labels.t_stride > 0 &&
+               modified_labels->num_chunks % modified_labels->post.size() == 0 &&
+               modified_labels->num_chunks % class_labels.post.size() == 0 &&
+               modified_labels->num_spk % modified_labels->num_chunks == 0);
+
+  int32 num_chunks = modified_labels->num_chunks,
+      num_t_values = int32(modified_labels->post.size() / num_chunks),
+      end_t = modified_labels->first_t + modified_labels->t_stride * num_t_values,
+      dest_offset = 0;
+  for (int32 t = modified_labels->first_t; t < end_t;
+       t += modified_labels->t_stride, dest_offset += num_chunks) {
+    int32 src_offset = FindSrcOffset(class_labels, t);
+    if (src_offset < 0)
+      continue;
+    for (int32 n = 0; n < num_chunks; n++)
+      modified_labels->post[dest_offset + n] = class_labels.post[src_offset + n];
+  }
+}
+
+
+void ClassLabels::Write(std::ostream &os, bool binary) const {
+  WriteToken(os, binary, "<ClassLabels>");
+  WriteBasicType(os, binary, num_classes);
+  WriteBasicType(os, binary, first_t);
+  WriteBasicType(os, binary, t_stride);
+  WriteBasicType(os, binary, num_chunks);
+  WritePosterior(os, binary, post);
+  WriteToken(os, binary, "</ClassLabels>");
+}
+
+void ClassLabels::Read(std::istream &is, bool binary) {
+  ExpectToken(is, binary, "<ClassLabels>");
+  ReadBasicType(is, binary, &num_classes);
+  ReadBasicType(is, binary, &first_t);
+  ReadBasicType(is, binary, &t_stride);
+  ReadBasicType(is, binary, &num_chunks);
+  ReadPosterior(is, binary, &post);
+  ExpectToken(is, binary, "</ClassLabels>");
+}
+
+bool ClassLabels::operator == (const ClassLabels &other) const {
+  return (num_classes == other.num_classes && first_t == other.first_t &&
+          num_chunks == other.num_chunks && num_spk == other.num_spk &&
+          post.size() == other.post.size());
+}
+
+
+
+void MergeClassLabels(std::vector<const ClassLabels*> &class_labels_in,
+                      ClassLabels *class_labels_out) {
+  int32 num_inputs = class_labels_in.size();
+  KALDI_ASSERT(num_inputs > 0);
+  // Check that the inputs are all structurally the same.
+  for (size_t i = 1; i < num_inputs; i++) {
+    KALDI_ASSERT( *(class_labels_in[i]) == *(class_labels_in[0]));
+  }
+
+  const ClassLabels &first_input = *(class_labels_in[0]);
+  if (num_inputs == 1 ||
+      class_labels_in[0]->num_classes == 0) {
+    *class_labels_out = *(class_labels_in[0]);
+    return;
+  }
+  int32 num_chunks_in = first_input.num_chunks,
+      num_chunks_out = first_input.num_chunks * num_inputs;
+
+  class_labels_out->num_classes = first_input.num_classes;
+  class_labels_out->first_t = first_input.first_t;
+  class_labels_out->t_stride = first_input.t_stride;
+  class_labels_out->num_chunks = num_chunks_out;
+  if (first_input.num_chunks > 1) {
+    // Egs were already merged -> assume separate speakers.
+    class_labels_out->num_spk = first_input.num_spk * num_inputs;
+  } else {
+    // First time merging -> assume the same speaker.
+    KALDI_ASSERT(first_input.num_spk == 1);
+    class_labels_out->num_spk = 1;
+  }
+  int32 num_t_values = int32(first_input.post.size()) / num_chunks_in;
+
+  class_labels_out->post.resize(num_t_values * num_chunks_out);
+  for (int32 t_index = 0; t_index < num_t_values; t_index++) {
+    for (int32 n = 0; n < num_chunks_out; n++) {
+      int32 input_labels_index = n / num_chunks_in,
+          input_n_index = n % num_chunks_in;
+      int32 output_index = t_index * num_chunks_out + n,
+          input_index = t_index * num_chunks_in + input_n_index;
+      class_labels_out->post[output_index] =
+          class_labels_in[input_labels_index]->post[input_index];
+    }
+  }
+}
+
+
 // this will be the most negative number representable as int32.
 const int kNoTime = std::numeric_limits<int32>::min();
+
 
 } // namespace nnet3
 } // namespace kaldi

@@ -33,18 +33,13 @@ void NnetChainSupervision::Write(std::ostream &os, bool binary) const {
   supervision.Write(os, binary);
   WriteToken(os, binary, "<DW2>");
   deriv_weights.Write(os, binary);
-  if (chunks_per_group != 1) {
-    WriteToken(os, binary, "<ChunksPerGroup>");
-    WriteBasicType(os, binary, chunks_per_group);
-  }
   WriteToken(os, binary, "</NnetChainSup>");
 }
 
 bool NnetChainSupervision::operator == (const NnetChainSupervision &other) const {
   return name == other.name && indexes == other.indexes &&
       supervision == other.supervision &&
-      deriv_weights.ApproxEqual(other.deriv_weights) &&
-      chunks_per_group == other.chunks_per_group;
+      deriv_weights.ApproxEqual(other.deriv_weights);
 }
 
 void NnetChainSupervision::Read(std::istream &is, bool binary) {
@@ -56,12 +51,6 @@ void NnetChainSupervision::Read(std::istream &is, bool binary) {
   // supported to be read by the current code -> re-dump the egs.
   ExpectToken(is, binary, "<DW2>");
   deriv_weights.Read(is, binary);
-  if (PeekToken(is, binary) == 'C') {
-    ExpectToken(is, binary, "<ChunksPerGroup>");
-    ReadBasicType(is, binary, &chunks_per_group);
-  } else {
-    chunks_per_group = 1;
-  }
   ExpectToken(is, binary, "</NnetChainSup>");
   CheckDim();
 }
@@ -80,8 +69,7 @@ void NnetChainSupervision::CheckDim() const {
       frame_skip = indexes[supervision.num_sequences].t - first_frame,
       num_sequences = supervision.num_sequences,
       frames_per_sequence = supervision.frames_per_sequence;
-  KALDI_ASSERT(chunks_per_group > 0 &&
-               num_sequences % chunks_per_group == 0);
+
   int32 k = 0;
   for (int32 i = 0; i < frames_per_sequence; i++) {
     for (int32 j = 0; j < num_sequences; j++,k++) {
@@ -100,15 +88,13 @@ NnetChainSupervision::NnetChainSupervision(const NnetChainSupervision &other):
     name(other.name),
     indexes(other.indexes),
     supervision(other.supervision),
-    deriv_weights(other.deriv_weights),
-    chunks_per_group(other.chunks_per_group) { CheckDim(); }
+    deriv_weights(other.deriv_weights) { CheckDim(); }
 
 void NnetChainSupervision::Swap(NnetChainSupervision *other) {
   name.swap(other->name);
   indexes.swap(other->indexes);
   supervision.Swap(&(other->supervision));
   deriv_weights.Swap(&(other->deriv_weights));
-  std::swap(chunks_per_group, other->chunks_per_group);
   if (RandInt(0, 5) == 0)
     CheckDim();
 }
@@ -121,8 +107,7 @@ NnetChainSupervision::NnetChainSupervision(
     int32 frame_skip):
     name(name),
     supervision(supervision),
-    deriv_weights(deriv_weights),
-    chunks_per_group(1) {
+    deriv_weights(deriv_weights) {
   // note: this will set the 'x' index to zero.
   indexes.resize(supervision.num_sequences *
                  supervision.frames_per_sequence);
@@ -161,6 +146,8 @@ void NnetChainExample::Write(std::ostream &os, bool binary) const {
     outputs[i].Write(os, binary);
     if (!binary) os << '\n';
   }
+  if (!class_labels.post.empty())
+    class_labels.Write(os, binary);
   WriteToken(os, binary, "</Nnet3ChainEg>");
 }
 
@@ -181,6 +168,8 @@ void NnetChainExample::Read(std::istream &is, bool binary) {
   outputs.resize(size);
   for (int32 i = 0; i < size; i++)
     outputs[i].Read(is, binary);
+  if (PeekToken(is, binary) != '/')
+    class_labels.Read(is, binary);
   ExpectToken(is, binary, "</Nnet3ChainEg>");
 }
 
@@ -268,7 +257,6 @@ static void MergeSupervision(
       }
     }
   }
-  output->chunks_per_group = example_stride;
   output->CheckDim();
 }
 

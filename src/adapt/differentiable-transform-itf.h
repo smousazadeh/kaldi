@@ -301,7 +301,6 @@ class DifferentiableTransform {
       const SpeakerStatsItf &speaker_stats,
       MatrixBase<BaseFloat> *output) const = 0;
 
-
   // This function outputs the speaker-specific transformation in a matrix form
   // with an offset, i.e., a matrix of dimension Dim() by Dim() + 1 where
   // the last column represents the offset term (the same way Kaldi represents
