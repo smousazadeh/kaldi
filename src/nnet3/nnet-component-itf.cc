@@ -635,5 +635,6 @@ void NonlinearComponent::ConsolidateMemory() {
   { CuVector<double> temp(oderiv_sumsq_); oderiv_sumsq_.Swap(&temp); }
 }
 
+
 } // namespace nnet3
 } // namespace kaldi

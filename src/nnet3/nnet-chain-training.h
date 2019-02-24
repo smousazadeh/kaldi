@@ -26,6 +26,7 @@
 #include "nnet3/nnet-optimize.h"
 #include "nnet3/nnet-chain-example.h"
 #include "nnet3/nnet-training.h"
+#include "nnet3/natural-gradient-online.h"
 #include "chain/chain-training.h"
 #include "chain/chain-den-graph.h"
 
@@ -94,6 +95,11 @@ class NnetChainTrainer {
                       // natural-gradient update, it's better to consider it as
                       // a delta-parameter nnet.
   CachingOptimizingCompiler compiler_;
+
+
+  // preconditioner_ is only used if opts_.nnet_config.global_ng_rank > 0.
+  OnlineNaturalGradient preconditioner_;
+
 
   // This code supports multiple output layers, even though in the
   // normal case there will be just one output layer named "output".

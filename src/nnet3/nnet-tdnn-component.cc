@@ -644,7 +644,7 @@ int32 TdnnComponent::NumParameters() const {
 }
 
 void TdnnComponent::Vectorize(
-    VectorBase<BaseFloat> *params) const {
+    CuVectorBase<BaseFloat> *params) const {
   KALDI_ASSERT(params->Dim() == NumParameters());
   int32 linear_size = linear_params_.NumRows() * linear_params_.NumCols(),
       bias_size = bias_params_.Dim();
@@ -654,7 +654,7 @@ void TdnnComponent::Vectorize(
 }
 
 void TdnnComponent::UnVectorize(
-    const VectorBase<BaseFloat> &params) {
+    const CuVectorBase<BaseFloat> &params) {
   KALDI_ASSERT(params.Dim() == NumParameters());
   int32 linear_size = linear_params_.NumRows() * linear_params_.NumCols(),
       bias_size = bias_params_.Dim();

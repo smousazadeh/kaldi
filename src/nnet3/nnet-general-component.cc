@@ -1377,11 +1377,11 @@ int32 ConstantComponent::NumParameters() const {
   return output_.Dim();
 }
 
-void ConstantComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void ConstantComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   params->CopyFromVec(output_);
 }
 
-void ConstantComponent::UnVectorize(const VectorBase<BaseFloat> &params) {
+void ConstantComponent::UnVectorize(const CuVectorBase<BaseFloat> &params) {
   output_.CopyFromVec(params);
 }
 

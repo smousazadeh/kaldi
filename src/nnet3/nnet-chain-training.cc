@@ -34,6 +34,14 @@ NnetChainTrainer::NnetChainTrainer(const NnetChainTrainingOptions &opts,
               opts_.nnet_config.compiler_config),
     num_minibatches_processed_(0),
     srand_seed_(RandInt(0, 100000)) {
+  if (opts_.nnet_config.global_ng_rank > 0) {
+    preconditioner_.SetRank(opts_.nnet_config.global_ng_rank);
+    // The NG update won't take significant time in this case, and without
+    // updating each time it may take unacceptably long for the Fisher matrix
+    // to converge to something reasonable (since we're doing a rank-1 update
+    // each time), so we set this to 1.
+    preconditioner_.SetUpdatePeriod(1);
+  }
   if (opts.nnet_config.zero_component_stats)
     ZeroComponentStats(nnet);
   KALDI_ASSERT(opts.nnet_config.momentum >= 0.0 &&
@@ -110,6 +118,20 @@ void NnetChainTrainer::TrainInternal(const NnetChainExample &eg,
 
   this->ProcessOutputs(false, eg, &computer);
   computer.Run();
+
+  // Do the natural gradient update on delta_nnet_, if specified.
+  if (opts_.nnet_config.global_ng_rank > 0) {
+    KALDI_ASSERT(opts_.nnet_config.momentum == 0 &&
+                 "--global-ng-rank option is not compatible with momentum.");
+    CuMatrix<BaseFloat> params(1, NumParameters(*delta_nnet_),
+                               kUndefined);
+    CuSubVector<BaseFloat> params_vec(params, 0);  // 1st row.
+    VectorizeNnet(*delta_nnet_, &params_vec);
+    BaseFloat scale;
+    preconditioner_.PreconditionDirections(&params, &scale);
+    params.Scale(scale);
+    UnVectorizeNnet(params_vec, delta_nnet_);
+  }
 
   // If relevant, add in the part of the gradient that comes from L2
   // regularization.

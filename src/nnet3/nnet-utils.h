@@ -139,11 +139,17 @@ int32 NumParameters(const Nnet &src);
 /// be equal to NumParameters(src).
 void VectorizeNnet(const Nnet &src,
                    VectorBase<BaseFloat> *params);
+/// Copies the nnet parameters to *params, whose dimension must
+/// be equal to NumParameters(src).  This version outputs to GPU.
+void VectorizeNnet(const Nnet &src,
+                   CuVectorBase<BaseFloat> *params);
 
 
 /// Copies the parameters from params to *dest.  the dimension of params must
 /// be equal to NumParameters(*dest).
 void UnVectorizeNnet(const VectorBase<BaseFloat> &params,
+                     Nnet *dest);
+void UnVectorizeNnet(const CuVectorBase<BaseFloat> &params,
                      Nnet *dest);
 
 /// Returns the number of updatable components in the nnet.

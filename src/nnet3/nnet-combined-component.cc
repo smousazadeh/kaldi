@@ -676,13 +676,13 @@ int32 ConvolutionComponent::NumParameters() const {
   return (filter_params_.NumCols() + 1) * filter_params_.NumRows();
 }
 
-void ConvolutionComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void ConvolutionComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   KALDI_ASSERT(params->Dim() == this->NumParameters());
   int32 num_filter_params = filter_params_.NumCols() * filter_params_.NumRows();
   params->Range(0, num_filter_params).CopyRowsFromMat(filter_params_);
   params->Range(num_filter_params, bias_params_.Dim()).CopyFromVec(bias_params_);
 }
-void ConvolutionComponent::UnVectorize(const VectorBase<BaseFloat> &params) {
+void ConvolutionComponent::UnVectorize(const CuVectorBase<BaseFloat> &params) {
   KALDI_ASSERT(params.Dim() == this->NumParameters());
   int32 num_filter_params = filter_params_.NumCols() * filter_params_.NumRows();
   filter_params_.CopyRowsFromVec(params.Range(0, num_filter_params));
@@ -1153,14 +1153,14 @@ int32 LstmNonlinearityComponent::NumParameters() const {
   return params_.NumRows() * params_.NumCols();
 }
 
-void LstmNonlinearityComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void LstmNonlinearityComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   KALDI_ASSERT(params->Dim() == NumParameters());
   params->CopyRowsFromMat(params_);
 }
 
 
 void LstmNonlinearityComponent::UnVectorize(
-    const VectorBase<BaseFloat> &params)  {
+    const CuVectorBase<BaseFloat> &params)  {
   KALDI_ASSERT(params.Dim() == NumParameters());
   params_.CopyRowsFromVec(params);
 }
@@ -1826,14 +1826,14 @@ int32 GruNonlinearityComponent::NumParameters() const {
   return w_h_.NumRows() * w_h_.NumCols();
 }
 
-void GruNonlinearityComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void GruNonlinearityComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   KALDI_ASSERT(params->Dim() == NumParameters());
   params->CopyRowsFromMat(w_h_);
 }
 
 
 void GruNonlinearityComponent::UnVectorize(
-    const VectorBase<BaseFloat> &params)  {
+    const CuVectorBase<BaseFloat> &params)  {
   KALDI_ASSERT(params.Dim() == NumParameters());
   w_h_.CopyRowsFromVec(params);
 }
@@ -1908,7 +1908,7 @@ void OutputGruNonlinearityComponent::InitFromConfig(ConfigLine *cfl) {
   if (!cfl->GetValue("cell-dim", &cell_dim_) || cell_dim_ <= 0)
     KALDI_ERR << "cell-dim > 0 is required for GruNonlinearityComponent.";
 
-  BaseFloat param_mean = 0.0, param_stddev = 1.0, 
+  BaseFloat param_mean = 0.0, param_stddev = 1.0,
       alpha = 4.0;
   int32 rank=8,
       update_period = 10;
@@ -2062,7 +2062,7 @@ void OutputGruNonlinearityComponent::Backprop(
   h_t_deriv.DiffTanh(h_t, h_t_deriv);
   if (to_update)
     to_update->TanhStatsAndSelfRepair(h_t, &h_t_deriv);
-  
+
   if (to_update)
     to_update->UpdateParameters(c_t1, h_t_deriv);
   // At this point, 'h_t_deriv' contains the derivative w.r.t.
@@ -2297,14 +2297,14 @@ int32 OutputGruNonlinearityComponent::NumParameters() const {
   return w_h_.Dim();
 }
 
-void OutputGruNonlinearityComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void OutputGruNonlinearityComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   KALDI_ASSERT(params->Dim() == NumParameters());
   params->CopyFromVec(w_h_);
 }
 
 
 void OutputGruNonlinearityComponent::UnVectorize(
-    const VectorBase<BaseFloat> &params)  {
+    const CuVectorBase<BaseFloat> &params)  {
   KALDI_ASSERT(params.Dim() == NumParameters());
   w_h_.CopyFromVec(params);
 }

@@ -529,14 +529,13 @@ class UpdatableComponent: public Component {
   /// the parameters in this class.
   virtual int32 NumParameters() const { KALDI_ASSERT(0); return 0; }
 
-  /// Turns the parameters into vector form.  We put the vector form on the CPU,
-  /// because in the kinds of situations where we do this, we'll tend to use
-  /// too much memory for the GPU.
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const { KALDI_ASSERT(0); }
+  /// Turns the parameters into vector form.
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const { KALDI_ASSERT(0); }
   /// Converts the parameters from vector form.
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params) {
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params) {
     KALDI_ASSERT(0);
   }
+
 
  protected:
   // to be called from child classes, extracts any learning rate information

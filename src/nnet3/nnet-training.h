@@ -44,6 +44,7 @@ struct NnetTrainerOptions {
   std::string write_cache;
   bool binary_write_cache;
   BaseFloat max_param_change;
+  int32 global_ng_rank;
   NnetOptimizeOptions optimize_config;
   NnetComputeOptions compute_config;
   CachingOptimizingCompilerOptions compiler_config;
@@ -58,7 +59,8 @@ struct NnetTrainerOptions {
       backstitch_training_interval(1),
       batchnorm_stats_scale(0.8),
       binary_write_cache(true),
-      max_param_change(2.0) { }
+      max_param_change(2.0),
+      global_ng_rank(0) { }
   void Register(OptionsItf *opts) {
     opts->Register("store-component-stats", &store_component_stats,
                    "If true, store activations and derivatives for nonlinear "
@@ -72,6 +74,11 @@ struct NnetTrainerOptions {
     opts->Register("max-param-change", &max_param_change, "The maximum change in "
                    "parameters allowed per minibatch, measured in Euclidean norm "
                    "over the entire model (change will be clipped to this value)");
+    opts->Register("global-ng-rank", &global_ng_rank, "Rank for natural gradient "
+                   "update that is applied globally (i.e. to the nnet as a whole, "
+                   "not per layer).  If left at zero, there is no natural gradient "
+                   "at this level.  Note: setting this too large may unacceptably "
+                   "increase memory usage for larger models.");
     opts->Register("momentum", &momentum, "Momentum constant to apply during "
                    "training (help stabilize update).  e.g. 0.9.  Note: we "
                    "automatically multiply the learning rate by (1-momenum) "

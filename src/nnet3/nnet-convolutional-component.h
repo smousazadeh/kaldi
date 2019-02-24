@@ -278,8 +278,8 @@ class TimeHeightConvolutionComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
   virtual void FreezeNaturalGradient(bool freeze);
 
 
@@ -519,8 +519,8 @@ class TdnnComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
   virtual void FreezeNaturalGradient(bool freeze);
 
 

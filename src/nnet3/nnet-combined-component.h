@@ -170,8 +170,8 @@ class ConvolutionComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
 
   // Some functions that are specific to this class.
   void SetParams(const VectorBase<BaseFloat> &bias,
@@ -368,8 +368,8 @@ class LstmNonlinearityComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
   virtual void ZeroStats();
   virtual void FreezeNaturalGradient(bool freeze);
 
@@ -747,8 +747,8 @@ class GruNonlinearityComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
   virtual void ZeroStats();
   virtual void FreezeNaturalGradient(bool freeze);
 
@@ -1013,8 +1013,8 @@ class OutputGruNonlinearityComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
   virtual void ZeroStats();
   virtual void FreezeNaturalGradient(bool freeze);
 

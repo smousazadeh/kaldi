@@ -367,7 +367,7 @@ int32 NumParameters(const Nnet &src) {
 
 
 void VectorizeNnet(const Nnet &src,
-                   VectorBase<BaseFloat> *parameters) {
+                   CuVectorBase<BaseFloat> *parameters) {
   KALDI_ASSERT(parameters->Dim() == NumParameters(src));
   int32 dim_offset = 0;
   for (int32 c = 0; c < src.NumComponents(); c++) {
@@ -381,7 +381,7 @@ void VectorizeNnet(const Nnet &src,
         KALDI_ERR << "Updatable component does not inherit from class "
             "UpdatableComponent; change this code.";
       int32 this_dim = uc->NumParameters();
-      SubVector<BaseFloat> this_part(*parameters, dim_offset, this_dim);
+      CuSubVector<BaseFloat> this_part(*parameters, dim_offset, this_dim);
       uc->Vectorize(&this_part);
       dim_offset += this_dim;
     }
@@ -389,7 +389,7 @@ void VectorizeNnet(const Nnet &src,
 }
 
 
-void UnVectorizeNnet(const VectorBase<BaseFloat> &parameters,
+void UnVectorizeNnet(const CuVectorBase<BaseFloat> &parameters,
                      Nnet *dest) {
   KALDI_ASSERT(parameters.Dim() == NumParameters(*dest));
   int32 dim_offset = 0;
@@ -403,11 +403,24 @@ void UnVectorizeNnet(const VectorBase<BaseFloat> &parameters,
         KALDI_ERR << "Updatable component does not inherit from class "
             "UpdatableComponent; change this code.";
       int32 this_dim = uc->NumParameters();
-      const SubVector<BaseFloat> this_part(parameters, dim_offset, this_dim);
+      const CuSubVector<BaseFloat> this_part(parameters, dim_offset, this_dim);
       uc->UnVectorize(this_part);
       dim_offset += this_dim;
     }
   }
+}
+
+void VectorizeNnet(const Nnet &src,
+                   VectorBase<BaseFloat> *params) {
+  CuVector<BaseFloat> gpu_params(NumParameters(src), kUndefined);
+  VectorizeNnet(src, &gpu_params);
+  params->CopyFromVec(gpu_params);
+}
+
+void UnVectorizeNnet(const VectorBase<BaseFloat> &params,
+                     Nnet *dest) {
+  CuVector<BaseFloat> gpu_params(params);
+  UnVectorizeNnet(gpu_params, dest);
 }
 
 int32 NumUpdatableComponents(const Nnet &dest) {

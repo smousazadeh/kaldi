@@ -445,8 +445,8 @@ class AffineComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
 
   // Some functions that are specific to this class.
 
@@ -541,8 +541,8 @@ class BlockAffineComponent : public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
 
   explicit BlockAffineComponent(const BlockAffineComponent &other);
   explicit BlockAffineComponent(const RepeatedAffineComponent &rac);
@@ -605,8 +605,8 @@ class RepeatedAffineComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
 
   // Some functions that are specific to this class.
   const CuVector<BaseFloat> &BiasParams() const { return bias_params_; }
@@ -958,8 +958,8 @@ class LinearComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
   virtual void FreezeNaturalGradient(bool freeze);
   virtual void ConsolidateMemory();
 
@@ -1549,8 +1549,8 @@ class PerElementScaleComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
 
   // Some functions that are specific to this class.
   explicit PerElementScaleComponent(const PerElementScaleComponent &other);
@@ -1651,8 +1651,8 @@ class PerElementOffsetComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
 
   // Copy constructor
   explicit PerElementOffsetComponent(const PerElementOffsetComponent &other);
@@ -1721,8 +1721,8 @@ class ConstantFunctionComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
   virtual void ConsolidateMemory();
  private:
   int32 input_dim_;
@@ -1896,8 +1896,8 @@ class ScaleAndOffsetComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const { return 2 * scales_.Dim(); }
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
   virtual void ConsolidateMemory();
 
 
@@ -2026,8 +2026,8 @@ class CompositeComponent: public UpdatableComponent {
   virtual void PerturbParams(BaseFloat stddev);
   virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
   virtual int32 NumParameters() const;
-  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
-  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void Vectorize(CuVectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const CuVectorBase<BaseFloat> &params);
   virtual void FreezeNaturalGradient(bool freeze);
 
   // note: we dont implement the StoreStats function as it would be quite

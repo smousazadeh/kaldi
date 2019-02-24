@@ -90,7 +90,7 @@ void TestNnetComponentVectorizeUnVectorize(Component *c) {
   KALDI_ASSERT(uc != NULL);
   UpdatableComponent *uc2 = dynamic_cast<UpdatableComponent*>(uc->Copy());
   uc2->Scale(0.0);
-  Vector<BaseFloat> params(uc2->NumParameters());
+  CuVector<BaseFloat> params(uc2->NumParameters());
   uc2->Vectorize(&params);
   KALDI_ASSERT(params.Min()==0.0 && params.Sum()==0.0);
   uc->Vectorize(&params);
@@ -99,7 +99,7 @@ void TestNnetComponentVectorizeUnVectorize(Component *c) {
   BaseFloat x = uc2->DotProduct(*uc2), y = uc->DotProduct(*uc),
       z = uc2->DotProduct(*uc);
   KALDI_ASSERT(ApproxEqual(x, y) && ApproxEqual(y, z));
-  Vector<BaseFloat> params2(uc2->NumParameters());
+  CuVector<BaseFloat> params2(uc2->NumParameters());
   uc2->Vectorize(&params2);
   for(int i = 0; i < params.Dim(); i++)
     KALDI_ASSERT(params(i) == params2(i));
@@ -144,7 +144,7 @@ void TestNnetComponentUpdatable(Component *c) {
     }
     // testing that scaling by 0.5 works the same whether
     // done on the vectorized paramters or via Scale().
-    Vector<BaseFloat> vec2(uc->NumParameters());
+    CuVector<BaseFloat> vec2(uc->NumParameters());
     uc2->Vectorize(&vec2);
     vec2.Scale(0.5);
     uc2->UnVectorize(vec2);

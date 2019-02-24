@@ -1314,13 +1314,13 @@ void AffineComponent::Write(std::ostream &os, bool binary) const {
 int32 AffineComponent::NumParameters() const {
   return (InputDim() + 1) * OutputDim();
 }
-void AffineComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void AffineComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   KALDI_ASSERT(params->Dim() == this->NumParameters());
   params->Range(0, InputDim() * OutputDim()).CopyRowsFromMat(linear_params_);
   params->Range(InputDim() * OutputDim(),
                 OutputDim()).CopyFromVec(bias_params_);
 }
-void AffineComponent::UnVectorize(const VectorBase<BaseFloat> &params) {
+void AffineComponent::UnVectorize(const CuVectorBase<BaseFloat> &params) {
   KALDI_ASSERT(params.Dim() == this->NumParameters());
   linear_params_.CopyRowsFromVec(params.Range(0, InputDim() * OutputDim()));
   bias_params_.CopyFromVec(params.Range(InputDim() * OutputDim(),
@@ -1556,14 +1556,14 @@ int32 RepeatedAffineComponent::NumParameters() const {
   return linear_params_.NumCols() * linear_params_.NumRows() + bias_params_.Dim();
 }
 
-void RepeatedAffineComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void RepeatedAffineComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   KALDI_ASSERT(params->Dim() == this->NumParameters());
   params->Range(0, linear_params_.NumCols() * linear_params_.NumRows()).CopyRowsFromMat(linear_params_);
   params->Range(linear_params_.NumCols() * linear_params_.NumRows(),
                 bias_params_.Dim()).CopyFromVec(bias_params_);
 }
 
-void RepeatedAffineComponent::UnVectorize(const VectorBase<BaseFloat> &params) {
+void RepeatedAffineComponent::UnVectorize(const CuVectorBase<BaseFloat> &params) {
   KALDI_ASSERT(params.Dim() == this->NumParameters());
   linear_params_.CopyRowsFromVec(params.Range(0, linear_params_.NumCols() * linear_params_.NumRows()));
   bias_params_.CopyFromVec(params.Range(linear_params_.NumCols() * linear_params_.NumRows(),
@@ -1916,7 +1916,7 @@ int32 BlockAffineComponent::NumParameters() const {
   return linear_params_.NumCols() * linear_params_.NumRows() + bias_params_.Dim();
 }
 
-void BlockAffineComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void BlockAffineComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   KALDI_ASSERT(params->Dim() == this->NumParameters());
   int32 num_linear_params = linear_params_.NumCols() * linear_params_.NumRows();
   int32 num_bias_params = bias_params_.Dim();
@@ -1924,7 +1924,7 @@ void BlockAffineComponent::Vectorize(VectorBase<BaseFloat> *params) const {
   params->Range(num_linear_params, num_bias_params).CopyFromVec(bias_params_);
 }
 
-void BlockAffineComponent::UnVectorize(const VectorBase<BaseFloat> &params) {
+void BlockAffineComponent::UnVectorize(const CuVectorBase<BaseFloat> &params) {
   KALDI_ASSERT(params.Dim() == this->NumParameters());
   int32 num_linear_params = linear_params_.NumCols() * linear_params_.NumRows();
   int32 num_bias_params = bias_params_.Dim();
@@ -2087,12 +2087,12 @@ int32 PerElementScaleComponent::NumParameters() const {
   return InputDim();
 }
 
-void PerElementScaleComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void PerElementScaleComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   params->CopyFromVec(scales_);
 }
 
 void PerElementScaleComponent::UnVectorize(
-    const VectorBase<BaseFloat> &params) {
+    const CuVectorBase<BaseFloat> &params) {
   scales_.CopyFromVec(params);
 }
 
@@ -2296,12 +2296,12 @@ int32 PerElementOffsetComponent::NumParameters() const {
   return offsets_.Dim();
 }
 
-void PerElementOffsetComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void PerElementOffsetComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   params->CopyFromVec(offsets_);
 }
 
 void PerElementOffsetComponent::UnVectorize(
-    const VectorBase<BaseFloat> &params) {
+    const CuVectorBase<BaseFloat> &params) {
   offsets_.CopyFromVec(params);
 }
 
@@ -2424,14 +2424,14 @@ BaseFloat ScaleAndOffsetComponent::DotProduct(
   return VecVec(other->scales_, scales_) + VecVec(other->offsets_, offsets_);
 }
 
-void ScaleAndOffsetComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void ScaleAndOffsetComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   int32 dim = scales_.Dim();
   params->Range(0, dim).CopyFromVec(scales_);
   params->Range(dim, dim).CopyFromVec(offsets_);
 }
 
 void ScaleAndOffsetComponent::UnVectorize(
-    const VectorBase<BaseFloat> &params) {
+    const CuVectorBase<BaseFloat> &params) {
   int32 dim = scales_.Dim();
   scales_.CopyFromVec(params.Range(0, dim));
   offsets_.CopyFromVec(params.Range(dim, dim));
@@ -2755,11 +2755,11 @@ int32 ConstantFunctionComponent::NumParameters() const {
   return output_.Dim();
 }
 
-void ConstantFunctionComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void ConstantFunctionComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   params->CopyFromVec(output_);
 }
 
-void ConstantFunctionComponent::UnVectorize(const VectorBase<BaseFloat> &params) {
+void ConstantFunctionComponent::UnVectorize(const CuVectorBase<BaseFloat> &params) {
   output_.CopyFromVec(params);
 }
 
@@ -3299,11 +3299,11 @@ void LinearComponent::PerturbParams(BaseFloat stddev) {
 int32 LinearComponent::NumParameters() const {
   return params_.NumRows() * params_.NumCols();
 }
-void LinearComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void LinearComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   KALDI_ASSERT(params->Dim() == this->NumParameters());
   params->CopyRowsFromMat(params_);
 }
-void LinearComponent::UnVectorize(const VectorBase<BaseFloat> &params) {
+void LinearComponent::UnVectorize(const CuVectorBase<BaseFloat> &params) {
   KALDI_ASSERT(params.Dim() == this->NumParameters());
   params_.CopyRowsFromVec(params);
 }
@@ -4473,7 +4473,7 @@ int32 CompositeComponent::NumParameters() const {
 }
 
 // virtual
-void CompositeComponent::Vectorize(VectorBase<BaseFloat> *params) const {
+void CompositeComponent::Vectorize(CuVectorBase<BaseFloat> *params) const {
   int32 cur_offset = 0;
   KALDI_ASSERT(this->IsUpdatable());  // or should not be called.
   for (size_t i = 0; i < components_.size(); i++) {
@@ -4481,7 +4481,7 @@ void CompositeComponent::Vectorize(VectorBase<BaseFloat> *params) const {
       UpdatableComponent *uc =
           dynamic_cast<UpdatableComponent*>(components_[i]);
       int32 this_size = uc->NumParameters();
-      SubVector<BaseFloat> params_range(*params, cur_offset, this_size);
+      CuSubVector<BaseFloat> params_range(*params, cur_offset, this_size);
       uc->Vectorize(&params_range);
       cur_offset += this_size;
     }
@@ -4490,7 +4490,7 @@ void CompositeComponent::Vectorize(VectorBase<BaseFloat> *params) const {
 }
 
 // virtual
-void CompositeComponent::UnVectorize(const VectorBase<BaseFloat> &params) {
+void CompositeComponent::UnVectorize(const CuVectorBase<BaseFloat> &params) {
   int32 cur_offset = 0;
   KALDI_ASSERT(this->IsUpdatable());  // or should not be called.
   for (size_t i = 0; i < components_.size(); i++) {
@@ -4498,7 +4498,7 @@ void CompositeComponent::UnVectorize(const VectorBase<BaseFloat> &params) {
       UpdatableComponent *uc =
           dynamic_cast<UpdatableComponent*>(components_[i]);
       int32 this_size = uc->NumParameters();
-      SubVector<BaseFloat> params_range(params, cur_offset, this_size);
+      CuSubVector<BaseFloat> params_range(params, cur_offset, this_size);
       uc->UnVectorize(params_range);
       cur_offset += this_size;
     }
