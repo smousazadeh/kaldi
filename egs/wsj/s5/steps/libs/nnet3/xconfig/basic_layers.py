@@ -480,6 +480,10 @@ class XconfigOutputLayer(XconfigLayerBase):
         ng-linear-options=''  :   Options, like ng-affine-options, that are passed to
              the LinearComponent, only in bottleneck layers (i.e. if bottleneck-dim
              is supplied).
+        softmax-normalizer-dim=0:   If >0, a special modification with
+             SoftmaxNormalizerComponent.  Will document better if it works.
+             This would add 2 components with parameters just before the
+             output.
     """
 
     def __init__(self, first_token, key_to_value, prev_names=None):
@@ -517,6 +521,7 @@ class XconfigOutputLayer(XconfigLayerBase):
                        # zero values, unlike the hidden layers.
                        'param-stddev': 0.0,
                        'bias-stddev': 0.0,
+                       'softmax-normalizer-dim': 0
                       }
 
     def check_configs(self):
@@ -646,6 +651,30 @@ class XconfigOutputLayer(XconfigLayerBase):
                 ''.format(self.name, cur_node))
         configs.append(line)
         cur_node = '{0}.affine'.format(self.name)
+
+
+        softmax_normalizer_dim = self.config['softmax-normalizer-dim']
+        if softmax_normalizer_dim != 0:
+            line = ('component name={name}.softmax-normalizer type=SoftmaxNormalizerComponent '
+                    'input-dim={output_dim} output-dim={norm_dim} max-change=0.75 '.format(
+                        name=self.name, output_dim=output_dim,
+                        norm_dim=softmax_normalizer_dim))
+            configs.append(line)
+            line = ('component-node name={name}.softmax-normalizer component={name}.softmax-normalizer '
+                    'input={cur_node}'.format(name=self.name, cur_node=cur_node))
+            configs.append(line)
+
+            line = ('component name={name}.post-softmax-normalizer type=LinearComponent '
+                    'input-dim={norm_dim} output-dim={output_dim} max-change=0.75 '.format(
+                        name=self.name, norm_dim=softmax_normalizer_dim,
+                        output_dim=output_dim))
+            configs.append(line)
+            line = ('component-node name={name}.post-softmax-normalizer component={name}.post-softmax-normalizer '
+                    'input={name}.softmax-normalizer'.format(name=self.name))
+            configs.append(line)
+            cur_node = 'Sum({name}.affine, {name}.post-softmax-normalizer)'.format(
+                name=self.name)
+
 
         if include_log_softmax:
             line = ('component name={0}.log-softmax'

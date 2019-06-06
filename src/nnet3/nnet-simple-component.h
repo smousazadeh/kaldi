@@ -742,6 +742,132 @@ class LogSoftmaxComponent: public NonlinearComponent {
   LogSoftmaxComponent &operator = (const LogSoftmaxComponent &other); // Disallow.
 };
 
+
+/*
+  This component computes a rather specialized function.  Let the input to this
+   component be interpreted as unnormalized log-probs; call this x.  For each
+   row of this component's parameter matrix, we add it to x, compute the
+   log-softmax, and the output is one dimension of the output y.  (The output
+   dimension is equal to the number of rows).
+
+   A more in-depth treatment of the math is in nnet-simple-component.cc;
+   search for SOFTMAX NORMALIZER MATH.
+
+
+   Configuration values accepted:
+  Values inherited from UpdatableComponent (see its declaration in
+  nnet-component-itf for details):
+     learning-rate
+     learning-rate-factor
+     max-change
+
+  Values used in initializing the component's parameters:
+     input-dim             e.g. input-dim=1024.  The input dimension.
+     output-dim            e.g. output-dim=1024.  The output dimension.
+     param-stddev          e.g. param-stddev=0.025.  The standard deviation
+                           used to randomly initialize the linear parameters
+                           (as Gaussian random values * param-stddev).
+                           Defaults to 1/sqrt(input-dim), which is Glorot
+                           initialization.
+     matrix                e.g. matrix=foo/bar/init.mat  May be used as an
+                           alternative to (input-dim, output-dim, param-stddev,
+                           bias-stddev, bias-mean) to initialize the parameters.
+                           Dimension is output-dim by (input-dim + 1), last
+                           column is interpreted as the bias.
+
+   Options to the natural gradient (you won't normally have to set these,
+   the defaults are suitable):
+
+      use-natural-gradient=true   Set this to false to disable the natural-gradient
+                            update entirely (it will do regular SGD).
+      num-samples-history   Number of frames used as the time-constant to
+                            determine how 'up-to-date' the Fisher-matrix
+                            estimates are.  Smaller -> more up-to-date, but more
+                            noisy.  default=2000.
+      alpha                 Constant that determines how much we smooth the
+                            Fisher-matrix estimates with the unit matrix.
+                            Larger means more smoothing. default=4.0
+      rank-in               Rank used in low-rank-plus-unit estimate of Fisher
+                            matrix in the input space.  default=20.
+      rank-out              Rank used in low-rank-plus-unit estimate of Fisher
+                            matrix in the output-derivative space.  default=80.
+      update-period         Determines after with what frequency (in
+                            minibatches) we update the Fisher-matrix estimates;
+                            making this > 1 saves a little time in training.
+                            default=4.
+*/
+class SoftmaxNormalizerComponent: public UpdatableComponent {
+ public:
+  virtual int32 InputDim() const { return params_.NumCols(); }
+  virtual int32 OutputDim() const { return params_.NumRows(); }
+
+  virtual std::string Type() const { return "SoftmaxNormalizerComponent"; }
+  virtual int32 Properties() const {
+    return kSimpleComponent|kUpdatableComponent|kUsesMemo;
+  }
+
+  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                         const CuMatrixBase<BaseFloat> &in,
+                         CuMatrixBase<BaseFloat> *out) const;
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &in_value,
+                        const CuMatrixBase<BaseFloat> &, // out_value
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        void *memo,
+                        Component *to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+  virtual void DeleteMemo(void *memo) const { delete static_cast<Memo*>(memo); }
+
+  virtual void Read(std::istream &is, bool binary);
+  virtual void Write(std::ostream &os, bool binary) const;
+  // this constructor does not really initialize, use InitFromConfig() or Read().
+  SoftmaxNormalizerComponent() { }
+  void InitFromConfig(ConfigLine *cfl);
+  virtual std::string Info() const;
+  virtual Component* Copy() const;
+  virtual void Scale(BaseFloat scale);
+  virtual void Add(BaseFloat alpha, const Component &other);
+  virtual void PerturbParams(BaseFloat stddev);
+  virtual BaseFloat DotProduct(const UpdatableComponent &other) const;
+  virtual int32 NumParameters() const;
+  virtual void Vectorize(VectorBase<BaseFloat> *params) const;
+  virtual void UnVectorize(const VectorBase<BaseFloat> &params);
+  virtual void FreezeNaturalGradient(bool freeze);
+  virtual void ConsolidateMemory();
+
+  // copy constructor
+  explicit SoftmaxNormalizerComponent(const SoftmaxNormalizerComponent &other);
+
+  CuMatrixBase<BaseFloat> &Params() { return params_; }
+  const CuMatrixBase<BaseFloat> &Params() const { return params_; }
+ private:
+
+  struct Memo {
+    // search for SOFTMAX NORMALIZER MATH in the .cc file for
+    // explanation.
+    CuMatrix<BaseFloat> Z;
+    CuMatrix<BaseFloat> O;
+  };
+
+
+  // disallow assignment operator.
+  SoftmaxNormalizerComponent &operator= (
+      const SoftmaxNormalizerComponent&);
+
+  // The parameters.  We always make sure they are in the range [-10, 10], this
+  // is to prevent numerical overflow or underflow.
+  CuMatrix<BaseFloat> params_;
+  // the exp of the params; N in the math (search for SOFTMAX NORMALIZER MATH).
+  CuMatrix<BaseFloat> exp_params_;
+
+  // If true (and if not this->is_gradient_), use natural gradient updates.
+  bool use_natural_gradient_;
+  OnlineNaturalGradient preconditioner_in_;
+  OnlineNaturalGradient preconditioner_out_;
+};
+
+
 /*
   Keywords: natural gradient descent, NG-SGD, naturalgradient.  For
   the top-level of the natural gradient code look here, and also in
@@ -980,7 +1106,7 @@ class LinearComponent: public UpdatableComponent {
   CuMatrix<BaseFloat> params_;
 
   BaseFloat orthonormal_constraint_;
-  // If true (and if no this->is_gradient_), use natural gradient updates.
+  // If true (and if not this->is_gradient_), use natural gradient updates.
   bool use_natural_gradient_;
   OnlineNaturalGradient preconditioner_in_;
   OnlineNaturalGradient preconditioner_out_;

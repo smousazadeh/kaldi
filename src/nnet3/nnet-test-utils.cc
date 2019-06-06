@@ -1400,7 +1400,7 @@ void ComputeExampleComputationRequestSimple(
 static void GenerateRandomComponentConfig(std::string *component_type,
                                           std::string *config) {
 
-  int32 n = RandInt(0, 37);
+  int32 n = RandInt(0, 38);
   BaseFloat learning_rate = 0.001 * RandInt(1, 100);
 
   std::ostringstream os;
@@ -1771,6 +1771,13 @@ static void GenerateRandomComponentConfig(std::string *component_type,
       os << "cell-dim=" << RandInt(10, 20)
          << " learning-rate=" << learning_rate;
 
+      break;
+    }
+    case 38: {
+      *component_type = "SoftmaxNormalizerComponent";
+      int32 input_dim = RandInt(1, 50), output_dim = RandInt(1, 50);
+      os << "input-dim=" << input_dim << " output-dim=" << output_dim
+         << " learning-rate=" << learning_rate;
       break;
     }
     default:

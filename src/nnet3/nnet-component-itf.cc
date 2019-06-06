@@ -185,6 +185,8 @@ Component* Component::NewComponentOfType(const std::string &component_type) {
     ans = new OutputGruNonlinearityComponent();
   } else if (component_type == "ScaleAndOffsetComponent") {
     ans = new ScaleAndOffsetComponent();
+  } else if (component_type == "SoftmaxNormalizerComponent") {
+    ans = new SoftmaxNormalizerComponent();
   }
   if (ans != NULL) {
     KALDI_ASSERT(component_type == ans->Type());
