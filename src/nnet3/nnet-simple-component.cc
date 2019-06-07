@@ -3056,8 +3056,13 @@ void SoftmaxNormalizerComponent::Read(std::istream &is, bool binary) {
   KALDI_ASSERT(token == "");
   ExpectToken(is, binary, "<Params>");
   params_.Read(is, binary);
-  exp_params_.Resize(params_.NumRows(), params_.NumCols(), kUndefined);
-  exp_params_.Exp(params_);
+  if (PeekToken(is, binary) == 'P') {
+    ExpectToken(is, binary, "<ParamScale>");
+    ReadBasicType(is, binary, &param_scale_);
+  } else {
+    param_scale_ = 1.0;
+  }
+  ComputeExpParams();
   ExpectToken(is, binary, "<UseNaturalGradient>");
   ReadBasicType(is, binary, &use_natural_gradient_);
 
@@ -3094,27 +3099,22 @@ void SoftmaxNormalizerComponent::InitFromConfig(ConfigLine *cfl) {
   InitLearningRatesFromConfig(cfl);
 
   int32 input_dim = -1, output_dim = -1;
-  if (cfl->GetValue("matrix", &matrix_filename)) {
-    ReadKaldiObject(matrix_filename, &params_); // will abort on failure.
-    KALDI_ASSERT(params_.NumRows() != 0);
-    if (cfl->GetValue("input-dim", &input_dim))
-      KALDI_ASSERT(input_dim == InputDim() &&
-                   "input-dim mismatch vs. matrix.");
-    if (cfl->GetValue("output-dim", &output_dim))
-      KALDI_ASSERT(output_dim == OutputDim() &&
-                   "output-dim mismatch vs. matrix.");
-  } else {
-    ok = ok && cfl->GetValue("input-dim", &input_dim);
-    ok = ok && cfl->GetValue("output-dim", &output_dim);
-    if (!ok)
-      KALDI_ERR << "Bad initializer " << cfl->WholeLine();
-    BaseFloat param_stddev = 1.0 / std::sqrt(input_dim);
-    cfl->GetValue("param-stddev", &param_stddev);
-    params_.Resize(output_dim, input_dim);
-    KALDI_ASSERT(output_dim > 0 && input_dim > 0 && param_stddev >= 0.0);
-    params_.SetRandn(); // sets to random normally distributed noise.
-    params_.Scale(param_stddev);
-  }
+
+  ok = ok && cfl->GetValue("input-dim", &input_dim);
+  ok = ok && cfl->GetValue("output-dim", &output_dim);
+  if (!ok)
+    KALDI_ERR << "Bad initializer " << cfl->WholeLine();
+  param_scale_ = std::sqrt(BaseFloat(input_dim));
+  cfl->GetValue("param-scale", &param_scale_);
+
+  BaseFloat param_stddev = 2.0 / param_scale_;
+  cfl->GetValue("param-stddev", &param_stddev);
+
+  params_.Resize(output_dim, input_dim);
+  KALDI_ASSERT(output_dim > 0 && input_dim > 0 && param_stddev >= 0.0);
+  params_.SetRandn(); // sets to random normally distributed noise.
+  params_.Scale(param_stddev);
+
   // Read various natural-gradient-related configs.
   int32 rank_in = -1, rank_out = -1, update_period = 4;
   BaseFloat alpha = 4.0,
@@ -3143,8 +3143,7 @@ void SoftmaxNormalizerComponent::InitFromConfig(ConfigLine *cfl) {
   preconditioner_in_.SetUpdatePeriod(update_period);
   preconditioner_out_.SetUpdatePeriod(update_period);
 
-  exp_params_.Resize(params_.NumRows(), params_.NumCols(), kUndefined);
-  exp_params_.Exp(params_);
+  ComputeExpParams();;
 
   if (cfl->HasUnusedValues())
     KALDI_ERR << "Could not process these elements in initializer: "
@@ -3157,6 +3156,8 @@ void SoftmaxNormalizerComponent::Write(std::ostream &os,
   WriteUpdatableCommon(os, binary);  // Write the opening tag and learning rate
   WriteToken(os, binary, "<Params>");
   params_.Write(os, binary);
+  WriteToken(os, binary, "<ParamScale>");
+  WriteBasicType(os, binary, param_scale_);
   WriteToken(os, binary, "<UseNaturalGradient>");
   WriteBasicType(os, binary, use_natural_gradient_);
 
@@ -3185,7 +3186,8 @@ std::string SoftmaxNormalizerComponent::Info() const {
                       true, // include_row_norms
                       true, // include_column_norms
                       GetVerboseLevel() >= 2); // include_singular_values
-  stream << ", use-natural-gradient="
+  stream << ", param-scale=" << param_scale_
+         << ", use-natural-gradient="
          << (use_natural_gradient_ ? "true" : "false")
          << ", rank-in=" << preconditioner_in_.GetRank()
          << ", rank-out=" << preconditioner_out_.GetRank()
@@ -3196,6 +3198,11 @@ std::string SoftmaxNormalizerComponent::Info() const {
   return stream.str();
 }
 
+void SoftmaxNormalizerComponent::ComputeExpParams() {
+  exp_params_ = params_;
+  exp_params_.Scale(param_scale_);
+  exp_params_.Exp(exp_params_);
+}
 
 /**
    SOFTMAX NORMALIZER MATH
@@ -3205,12 +3212,15 @@ std::string SoftmaxNormalizerComponent::Info() const {
    Let input x be interpreted as a vector of unnormalized log-probs.
    Each row m_i of the parameter matrix m has the same dim as x.
    The function computed is:
-     y_i = log(sum(exp(m_i + x))
+     y_i = log(sum(exp(m_i + param_scale * x))
+   [note: param_scale helps the learning work better with our normal
+    max-change values and learning rates, it doesn't affect the power
+    or nature of the model.]
    We can compute y_i more efficiently as follows:
 
    Let m be the parameter matrix, and let n = exp(m) be the parameter
    matrix put (elementwise) through the exp() function.
-   Let z = exp(x), elementwise.
+   Let z = exp(param_scale * x), elementwise.
 
    Then y_i = log(n_i . z).  Formulated this way, the function can
    be computed as an exp on both x and the parameter matrix, then a
@@ -3218,7 +3228,7 @@ std::string SoftmaxNormalizerComponent::Info() const {
    one row per frame, then
    we compute:
           Z = exp(X)
-          N = exp(M)
+          N = exp(param_scale * M)
           O = Z * N^T   <-- matrix multiplication.
           Y = log(O).
 
@@ -3235,7 +3245,7 @@ std::string SoftmaxNormalizerComponent::Info() const {
          O' = Y' ./ O      <--- using d/dx log(x) = 1/x
          Z' = O' * N.     <--
          N' = O'^T * Z
-         M' = N' * N.     <--- using d/dx exp(x) = exp(x)
+         M' = param_scale * N' * N.     <--- using d/dx exp(param_scale * x) = param_scale * exp(param_scale *x)
          X' = Z' * Z.     <--- using d/dx exp(x) = exp(x)
 
    For the above we need to keep around N, O,and Z; we keep N
@@ -3295,10 +3305,11 @@ void SoftmaxNormalizerComponent::Backprop(const std::string &debug_info,
     // Next lines do: N' = O' * Z.
     CuMatrix<BaseFloat> params_deriv(dim_out, dim_in);
     params_deriv.AddMatMat(1.0, O_deriv, kTrans, memo->Z, kNoTrans, 0.0);
-    // Next line does: M' = N' * N.
+    // Next lines do: M' = param_scale * N' * N.
     // So after this point you should consider `params_deriv` as really
     // being `exp_params_deriv`.  (Note: exp_params_ is N in the math.)
     params_deriv.MulElements(exp_params_);
+    params_deriv.Scale(param_scale_);
 
     if (!to_update->is_gradient_ && use_natural_gradient_) {
       BaseFloat in_scale, out_scale;
@@ -3313,7 +3324,7 @@ void SoftmaxNormalizerComponent::Backprop(const std::string &debug_info,
       // Simple update.
       to_update->params_.AddMat(to_update->learning_rate_, params_deriv);
     }
-    to_update->exp_params_.Exp(to_update->params_);
+    to_update->ComputeExpParams();
   }
 }
 
@@ -3326,6 +3337,7 @@ SoftmaxNormalizerComponent::SoftmaxNormalizerComponent(
     const SoftmaxNormalizerComponent &other):
     UpdatableComponent(other),
     params_(other.params_),
+    param_scale_(other.param_scale_),
     exp_params_(other.exp_params_),
     use_natural_gradient_(other.use_natural_gradient_),
     preconditioner_in_(other.preconditioner_in_),
@@ -3335,7 +3347,7 @@ SoftmaxNormalizerComponent::SoftmaxNormalizerComponent(
 void SoftmaxNormalizerComponent::Scale(BaseFloat scale) {
   if (scale == 0.0) params_.SetZero();
   else params_.Scale(scale);
-  exp_params_.Exp(params_);
+  ComputeExpParams();
 }
 
 void SoftmaxNormalizerComponent::Add(BaseFloat alpha, const Component &other_in) {
@@ -3343,14 +3355,14 @@ void SoftmaxNormalizerComponent::Add(BaseFloat alpha, const Component &other_in)
       dynamic_cast<const SoftmaxNormalizerComponent*>(&other_in);
   KALDI_ASSERT(other != NULL);
   params_.AddMat(alpha, other->params_);
-  exp_params_.Exp(params_);
+  ComputeExpParams();
 }
 
 void SoftmaxNormalizerComponent::PerturbParams(BaseFloat stddev) {
   CuMatrix<BaseFloat> temp_params(params_);
   temp_params.SetRandn();
   params_.AddMat(stddev, temp_params);
-  exp_params_.Exp(params_);
+  ComputeExpParams();
 }
 int32 SoftmaxNormalizerComponent::NumParameters() const {
   return params_.NumRows() * params_.NumCols();
@@ -3362,7 +3374,7 @@ void SoftmaxNormalizerComponent::Vectorize(VectorBase<BaseFloat> *params) const 
 void SoftmaxNormalizerComponent::UnVectorize(const VectorBase<BaseFloat> &params) {
   KALDI_ASSERT(params.Dim() == this->NumParameters());
   params_.CopyRowsFromVec(params);
-  exp_params_.Exp(params_);
+  ComputeExpParams();
 }
 BaseFloat SoftmaxNormalizerComponent::DotProduct(const UpdatableComponent &other_in) const {
   const SoftmaxNormalizerComponent *other =

@@ -484,6 +484,8 @@ class XconfigOutputLayer(XconfigLayerBase):
              SoftmaxNormalizerComponent.  Will document better if it works.
              This would add 2 components with parameters just before the
              output.
+        softmax-normalizer-scale=1.0  A scale on the input to the softmax-normalizer
+             component
     """
 
     def __init__(self, first_token, key_to_value, prev_names=None):
@@ -521,7 +523,8 @@ class XconfigOutputLayer(XconfigLayerBase):
                        # zero values, unlike the hidden layers.
                        'param-stddev': 0.0,
                        'bias-stddev': 0.0,
-                       'softmax-normalizer-dim': 0
+                       'softmax-normalizer-dim': 0,
+                       'softmax-normalizer-scale': 1.0
                       }
 
     def check_configs(self):
@@ -655,8 +658,13 @@ class XconfigOutputLayer(XconfigLayerBase):
 
         softmax_normalizer_dim = self.config['softmax-normalizer-dim']
         if softmax_normalizer_dim != 0:
+            softmax_normalizer_scale = self.config['softmax-normalizer-scale']
+            if softmax_normalizer_scale != 1.0:
+                cur_node = 'Scale({0}, {1})'.format(softmax_normalizer_scale,
+                                                    cur_node)
             line = ('component name={name}.softmax-normalizer type=SoftmaxNormalizerComponent '
-                    'input-dim={output_dim} output-dim={norm_dim} max-change=0.75 '.format(
+                    'input-dim={output_dim} output-dim={norm_dim} max-change=0.75 param-scale=50.0 param-stddev=0.02'
+                    ''.format(
                         name=self.name, output_dim=output_dim,
                         norm_dim=softmax_normalizer_dim))
             configs.append(line)
@@ -664,13 +672,29 @@ class XconfigOutputLayer(XconfigLayerBase):
                     'input={cur_node}'.format(name=self.name, cur_node=cur_node))
             configs.append(line)
 
+            # For stability, put a batchnorm after the softmax-normalizer.
+            line = ('component name={name}.softmax-normalizer-batchnorm '
+                    ' type=BatchNormComponent dim={dim} '.format(
+                        name=self.name, dim=softmax_normalizer_dim))
+            configs.append(line)
+            line = ('component-node name={name}.softmax-normalizer-batchnorm component={name}.softmax-normalizer-batchnorm '
+                    'input={name}.softmax-normalizer'.format(name=self.name))
+            configs.append(line)
+
+            linear_options = self.config['ng-linear-options']
+            for opt_name in [ 'max-change', 'l2-regularize' ]:
+                value = self.config[opt_name]
+                if value != '':
+                    linear_options += ' {0}={1}'.format(opt_name, value)
+
             line = ('component name={name}.post-softmax-normalizer type=LinearComponent '
-                    'input-dim={norm_dim} output-dim={output_dim} max-change=0.75 '.format(
+                    'input-dim={norm_dim} output-dim={output_dim} param-stddev=0.01 '
+                    '{linear_options} orthonormal-constraint=-1.0'.format(
                         name=self.name, norm_dim=softmax_normalizer_dim,
-                        output_dim=output_dim))
+                        output_dim=output_dim, linear_options=linear_options))
             configs.append(line)
             line = ('component-node name={name}.post-softmax-normalizer component={name}.post-softmax-normalizer '
-                    'input={name}.softmax-normalizer'.format(name=self.name))
+                    'input={name}.softmax-normalizer-batchnorm'.format(name=self.name))
             configs.append(line)
             cur_node = 'Sum({name}.affine, {name}.post-softmax-normalizer)'.format(
                 name=self.name)

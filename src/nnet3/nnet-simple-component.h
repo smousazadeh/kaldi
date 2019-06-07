@@ -765,15 +765,13 @@ class LogSoftmaxComponent: public NonlinearComponent {
      input-dim             e.g. input-dim=1024.  The input dimension.
      output-dim            e.g. output-dim=1024.  The output dimension.
      param-stddev          e.g. param-stddev=0.025.  The standard deviation
-                           used to randomly initialize the linear parameters
+                           used to randomly initialize the parameters
                            (as Gaussian random values * param-stddev).
-                           Defaults to 1/sqrt(input-dim), which is Glorot
-                           initialization.
-     matrix                e.g. matrix=foo/bar/init.mat  May be used as an
-                           alternative to (input-dim, output-dim, param-stddev,
-                           bias-stddev, bias-mean) to initialize the parameters.
-                           Dimension is output-dim by (input-dim + 1), last
-                           column is interpreted as the bias.
+                           Defaults to 2 / param-scale.
+     param-scale           (default: sqrt(input-dim)).  The parameters are scaled
+                           by this value before being used.  This helps to
+                           keep the learning rates, parameter changes, etc.,
+                           in about the right range.
 
    Options to the natural gradient (you won't normally have to set these,
    the defaults are suitable):
@@ -843,6 +841,8 @@ class SoftmaxNormalizerComponent: public UpdatableComponent {
   const CuMatrixBase<BaseFloat> &Params() const { return params_; }
  private:
 
+  void ComputeExpParams();
+
   struct Memo {
     // search for SOFTMAX NORMALIZER MATH in the .cc file for
     // explanation.
@@ -858,7 +858,9 @@ class SoftmaxNormalizerComponent: public UpdatableComponent {
   // The parameters.  We always make sure they are in the range [-10, 10], this
   // is to prevent numerical overflow or underflow.
   CuMatrix<BaseFloat> params_;
-  // the exp of the params; N in the math (search for SOFTMAX NORMALIZER MATH).
+  BaseFloat param_scale_;
+  // the exp of (the params * param_scale_); N in the math (search for SOFTMAX
+  // NORMALIZER MATH).
   CuMatrix<BaseFloat> exp_params_;
 
   // If true (and if not this->is_gradient_), use natural gradient updates.

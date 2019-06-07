@@ -1,6 +1,31 @@
 #!/bin/bash
 
 # 1i is as 1h but introducing a modification with SoftmaxNormalizerComponent.
+# 1i2 is as 1i but after a script fix; restores l2 to the post-softmax-normalizer
+# linear component.
+# 1i3 is as 1i2 but after increasing the lr-factor on the softmax-normalizer layer
+#  from 10 to 25 and increasing its param-stddev from 1/sqrt(input_dim) to 2.0.
+# 1i4 is as 1i3 but with code changes to have param-scale=sqrt(input_dim) (~50 by default),
+#   and param-stddev=2/param-scale; and giving it the default max-change of 0.75.
+# 1i5 is as 1i4 but with param-scale set to 100 in the config.
+# 1i6 is as 1i5 but with param-scale increased to 200 in the config.
+# 1i7 is as 1i4 but with half the param-stddev, so param-scale=50, param-stddev=0.02.
+# 1i8 is as 1i7 but with orthonormal-constraint=-1.0 (and param-stddev=0.01) on the post-softmax-normalizer layers
+# 1i9 is as 1i8 but adding softmax-normalizer-scale=2.0 on the regular 'output' node.
+# 1i10 is a baseline, a repeat of 1h.
+
+# local/chain/compare_wer.sh --online exp/chain/tdnn1h_sp exp/chain/tdnn1i_sp exp/chain/tdnn1i2_sp exp/chain/tdnn1i3_sp exp/chain/tdnn1i4_sp exp/chain/tdnn1i7_sp
+# System                tdnn1h_sp tdnn1i_sp tdnn1i2_sp tdnn1i3_sp tdnn1i4_sp tdnn1i7_sp
+#WER dev_clean_2 (tgsmall)      12.09     11.96     11.65               12.16     11.75
+#             [online:]         12.11     12.04     11.71     11.54     12.12     11.84
+#WER dev_clean_2 (tglarge)       8.59      8.39      8.28      8.36      8.67      8.44
+#             [online:]          8.76      8.53      8.44      8.40      8.78      8.47
+# Final train prob        -0.0493   -0.0423   -0.0482   -0.0446   -0.0452   -0.0433
+# Final valid prob        -0.0805   -0.0764   -0.0773   -0.0762   -0.0771   -0.0763
+# Final train prob (xent)   -1.1730   -0.8296   -1.1819   -1.0288   -1.0102   -0.9764
+# Final valid prob (xent)   -1.3872   -1.0610   -1.3625   -1.2309   -1.2147   -1.1827
+# Num-params                 5207856   6399792   6399792   6399792   6399792   6399792
+
 
 
 # 1h is as 1g but a re-tuned model based on resnet-style TDNN-F layers with
@@ -190,11 +215,11 @@ if [ $stage -le 13 ]; then
 
   ## adding the layers for chain branch
   prefinal-layer name=prefinal-chain input=prefinal-l $prefinal_opts small-dim=192 big-dim=768
-  output-layer name=output include-log-softmax=false softmax-normalizer-dim=128 dim=$num_targets $output_opts
+  output-layer name=output include-log-softmax=false dim=$num_targets softmax-normalizer-dim=128 softmax-normalizer-scale=2.0 $output_opts
 
   # adding the layers for xent branch
   prefinal-layer name=prefinal-xent input=prefinal-l $prefinal_opts small-dim=192 big-dim=768
-  output-layer name=output-xent dim=$num_targets softmax-normalizer-dim=128 learning-rate-factor=$learning_rate_factor $output_opts
+  output-layer name=output-xent dim=$num_targets learning-rate-factor=$learning_rate_factor softmax-normalizer-dim=128 $output_opts
 EOF
   steps/nnet3/xconfig_to_configs.py --xconfig-file $dir/configs/network.xconfig --config-dir $dir/configs/
 fi
