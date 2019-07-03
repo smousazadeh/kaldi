@@ -90,13 +90,15 @@ MelBanks::MelBanks(const MelBanksOptions &opts,
     BaseFloat left_mel = mel_low_freq + bin * mel_freq_delta,
         center_mel = mel_low_freq + (bin + 1) * mel_freq_delta,
         right_mel = mel_low_freq + (bin + 2) * mel_freq_delta;
-    if (opts.extra_width != 0.0) {
-      // Extend the window to add 'extra_width' Hz to its width.  Note: we might
+    if (opts.extra_bin_width != 0.0) {
+      // Extend the window to add 'extra_bin_width' Hz to its width.  Note: we might
       // call MelScale on a negative number below, but it won't matter, the mel
-      // scale linearly extends into negative inputs, and extra_width will be
+      // scale linearly extends into negative inputs, and extra_bin_width will be
       // about 50 or 60 if used, way less than 700.
-      left_mel = MelScale(InverseMelScale(left_mel) - opts.extra_width * 0.5);
-      right_mel = MelScale(InverseMelScale(right_mel) + opts.extra_width * 0.5);
+      left_mel = MelScale(InverseMelScale(left_mel) -
+                          opts.extra_bin_width * 0.5);
+      right_mel = MelScale(InverseMelScale(right_mel) +
+                           opts.extra_bin_width * 0.5);
     }
 
     if (vtln_warp_factor != 1.0) {

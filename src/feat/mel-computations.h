@@ -48,7 +48,7 @@ struct MelBanksOptions {
   BaseFloat vtln_low;  // vtln lower cutoff of warping function.
   BaseFloat vtln_high;  // vtln upper cutoff of warping function: if negative, added
                         // to the Nyquist frequency to get the cutoff.
-  BaseFloat extra_width;  // Extra width, in Hz, to add to each window on top of
+  BaseFloat extra_bin_width;  // Extra width, in Hz, to add to each window on top of
                           // what the normal approach gives you.
   bool debug_mel;
   // htk_mode is a "hidden" config, it does not show up on command line.
@@ -57,7 +57,7 @@ struct MelBanksOptions {
   bool htk_mode;
   explicit MelBanksOptions(int num_bins = 25)
       : num_bins(num_bins), low_freq(20), high_freq(0), vtln_low(100),
-        vtln_high(-500), extra_width(0.0), debug_mel(false),
+        vtln_high(-500), extra_bin_width(0.0), debug_mel(false),
         htk_mode(false) {}
 
   void Register(OptionsItf *opts) {
@@ -74,6 +74,9 @@ struct MelBanksOptions {
                    " (if negative, offset from high-mel-freq");
     opts->Register("debug-mel", &debug_mel,
                    "Print out debugging information for mel bin computation");
+    opts->Register("extra-bin-width", &extra_bin_width,
+                   "Extra width to add to all mel bins on top of the conventional "
+                   "formula.  E.g. try 50 or so.");
   }
 };
 
