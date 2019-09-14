@@ -72,11 +72,11 @@ namespace kaldi {
  *                  or a negative value (e.g. -1) sets it to the smallest likelihood
  *                  change seen during the splitting algorithm; this typically causes
  *                  about a 20% reduction in the number of leaves.
- 
+
  * @param P [in] The central position of the phone context window, e.g. 1 for a
  *                triphone system.
- * @param round_num_leaves [in]  If true, then the number of leaves in the 
- *                  final tree is made a multiple of 8. This is done by 
+ * @param round_num_leaves [in]  If true, then the number of leaves in the
+ *                  final tree is made a multiple of 8. This is done by
  *                  further clustering the leaves after they are first
  *                  clustered based on log-likelihood change.
  *                  (See cluster_thresh above) (default: true)
@@ -93,8 +93,73 @@ EventMap *BuildTree(Questions &qopts,
                     BaseFloat thresh,
                     int32 max_leaves,
                     BaseFloat cluster_thresh,  // typically == thresh.  If negative, use smallest split.
-                    int32 P, 
+                    int32 P,
                     bool round_num_leaves = true);
+
+
+/**
+ *  BuildTreeWithBlank builds a tree where one specific pdf-class is reserved
+ * for the `blank` symbol (and so is shared across all phones).
+ *
+ *  The sets "phone_sets" dictate how we set up the roots of the decision trees.
+ *  each set of phones phone_sets[i] has shared decision-tree roots, and if
+ *  the corresponding variable share_roots[i] is true, the root will be shared
+ *  for the different HMM-positions in the phone.  All phones in "phone_sets"
+ *  should be in the stats (use FixUnseenPhones to ensure this).
+ *  if for any i, do_split[i] is false, we will not do any tree splitting for
+ *  phones in that set.
+ * @param qopts [in] Questions options class, contains questions for each key
+ *                   (e.g. each phone position)
+ * @param phone_sets [in] Each element of phone_sets is a set of phones whose
+ *                 roots are shared together (prior to decision-tree splitting).
+ * @param phone2num_pdf_classes [in] A map from phones to the number of
+ *                 \ref pdf_class "pdf-classes"
+ *                 in the phone (this info is derived from the HmmTopology object)
+ * @param share_roots [in] A vector the same size as phone_sets; says for each
+ *                phone set whether the root should be shared among all the
+ *                pdf-classes or not.
+ * @param do_split [in] A vector the same size as phone_sets; says for each
+ *                phone set whether decision-tree splitting should be done
+ *                 (generally true for non-silence phones).
+ * @param stats [in] The statistics used in tree-building.
+ * @param thresh [in] Threshold used in decision-tree splitting (e.g. 1000),
+ *                   or you may use 0 in which case max_leaves becomes the
+ *                    constraint.
+ * @param max_leaves [in] Maximum number of leaves it will create; set this
+ *                  to a large number if you want to just specify  "thresh".
+ * @param cluster_thresh [in] Threshold for clustering leaves after decision-tree
+ *                  splitting (only within each phone-set); leaves will be combined
+ *                  if log-likelihood change is less than this.  A value about equal
+ *                  to "thresh" is suitable
+ *                  if thresh != 0; otherwise, zero will mean no clustering is done,
+ *                  or a negative value (e.g. -1) sets it to the smallest likelihood
+ *                  change seen during the splitting algorithm; this typically causes
+ *                  about a 20% reduction in the number of leaves.
+
+ * @param P [in] The central position of the phone context window, e.g. 1 for a
+ *                triphone system.
+ * @param blank_pdf_class [in]   The pdf-class which is to be shared, e.g. 1
+ *                  in the normal chain topology.
+ * @param round_num_leaves [in]  If true, then the number of leaves in the
+ *                  final tree is made a multiple of 8. This is done by
+ *                  further clustering the leaves after they are first
+ *                  clustered based on log-likelihood change.
+ *                  (See cluster_thresh above) (default: true)
+ * @return  Returns a pointer to an EventMap object that is the tree.
+
+*/
+EventMap *BuildTreeWithBlank(Questions &qopts,
+                             const std::vector<std::vector<int32> > &phone_sets,
+                             const std::vector<int32> &phone2num_pdf_classes,
+                             const std::vector<bool> &share_roots,
+                             const std::vector<bool> &do_split,
+                             const BuildTreeStatsType &stats,
+                             BaseFloat thresh,
+                             int32 max_leaves,
+                             BaseFloat cluster_thresh,  // typically == thresh.  If negative, use smallest split.
+                             int32 P,
+                             int32 blank_pdf_class,
+                             bool round_num_leaves = true);
 
 
 /**
@@ -131,7 +196,7 @@ EventMap *BuildTree(Questions &qopts,
  *                 (generally true for non-silence phones).
  * @param stats [in] The statistics used in tree-building.
  * @param max_leaves_first [in] Maximum number of leaves it will create in first
- *                  level of decision tree. 
+ *                  level of decision tree.
  * @param max_leaves_second [in] Maximum number of leaves it will create in second
  *                  level of decision tree.  Must be > max_leaves_first.
  * @param cluster_leaves [in] Boolean value; if true, we post-cluster the leaves produced

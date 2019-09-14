@@ -310,6 +310,230 @@ EventMap *BuildTree(Questions &qopts,
 }
 
 
+
+
+EventMap *BuildTreeWithBlank(
+    Questions &qopts,
+    const std::vector<std::vector<int32> > &phone_sets,
+    const std::vector<int32> &phone2num_pdf_classes_in,
+    const std::vector<bool> &share_roots,
+    const std::vector<bool> &do_split,
+    const BuildTreeStatsType &stats,
+    BaseFloat thresh,
+    int32 max_leaves,
+    BaseFloat cluster_thresh,  // typically == thresh.  If negative, use smallest split.
+    int32 P,
+    int32 blank_pdf_class,
+    bool round_num_leaves) {
+  std::vector<int32> phone2num_pdf_classes(phone2num_pdf_classes_in);
+  KALDI_ASSERT(thresh > 0 || max_leaves > 0);
+  KALDI_ASSERT(stats.size() != 0);
+  KALDI_ASSERT(!phone_sets.empty()
+         && phone_sets.size() == share_roots.size()
+         && do_split.size() == phone_sets.size());
+
+
+  for (auto v: phone_sets) {
+    for (auto phone: v) {
+      KALDI_ASSERT(phone > 0 && phone < phone2num_pdf_classes.size());
+      int32 &num_pdf_classes = phone2num_pdf_classes[phone];
+      if (!share_roots[phone]) {
+        if (blank_pdf_class != num_pdf_classes - 1) {
+          KALDI_ERR << "Currently, this function only works if "
+              "blank_pdf_class == the number of pdf-classes minus one, or the roots "
+              "are shared for this phone.  phone == " << phone;
+        } else {
+          // The following will prevent GetStubMap allocating anything for
+          // pdf-class == blank_pdf_class for this set of phones.
+          num_pdf_classes--;
+        }
+      }
+    }
+  }
+
+  // the inputs will be further checked in GetStubMap.
+  int32 num_leaves = 0;  // allocator for leaves.
+
+  EventMap *tree_stub = GetStubMap(P,
+                                   phone_sets,
+                                   phone2num_pdf_classes,
+                                   share_roots,
+                                   &num_leaves);
+  KALDI_LOG <<  "BuildTree: before building trees, map has "<< num_leaves << " leaves.";
+
+
+  BaseFloat impr;
+  BaseFloat smallest_split = 1.0e+10;
+
+
+  std::vector<int32> nonsplit_phones;
+  for (size_t i = 0; i < phone_sets.size(); i++)
+    if (!do_split[i])
+      nonsplit_phones.insert(nonsplit_phones.end(), phone_sets[i].begin(), phone_sets[i].end());
+
+  std::sort(nonsplit_phones.begin(), nonsplit_phones.end());
+
+  KALDI_ASSERT(IsSortedAndUniq(nonsplit_phones));
+  BuildTreeStatsType filtered_stats;
+  FilterStatsByKey(stats, P, nonsplit_phones, false,  // retain only those not
+                   // in "nonsplit_phones"
+                   &filtered_stats);
+
+  std::vector<int32> blank_pdf_classes;
+  blank_pdf_classes.push_back(blank_pdf_class);
+
+  {  // Remove stats with pdf-class == blank_pdf_class.
+    BuildTreeStatsType temp_stats;
+    FilterStatsByKey(filtered_stats, kPdfClass, blank_pdf_classes,
+                     false,  // Keep all pdf-classes but blank_pdf_class, in the stats.
+                     &temp_stats);
+    filtered_stats.swap(temp_stats);
+  }
+
+  EventMap *tree_split = SplitDecisionTree(*tree_stub,
+                                           filtered_stats,
+                                           qopts, thresh, max_leaves,
+                                           &num_leaves, &impr, &smallest_split);
+
+  if (cluster_thresh < 0.0) {
+    KALDI_LOG <<  "Setting clustering threshold to smallest split " << smallest_split;
+    cluster_thresh = smallest_split;
+  }
+
+  BaseFloat normalizer = SumNormalizer(stats),
+      impr_normalized = impr / normalizer,
+      normalizer_filt = SumNormalizer(filtered_stats),
+      impr_normalized_filt = impr / normalizer_filt;
+
+  KALDI_VLOG(1) <<  "After decision tree split, num-leaves = " << num_leaves
+                << ", like-impr = " << impr_normalized << " per frame over "
+                << normalizer << " frames.";
+
+  KALDI_VLOG(1) <<  "Including just phones that were split, improvement is "
+                << impr_normalized_filt << " per frame over "
+                << normalizer_filt << " frames.";
+
+
+  if (cluster_thresh != 0.0) {   // Cluster the tree.
+    BaseFloat objf_before_cluster = ObjfGivenMap(stats, *tree_split);
+
+    // Now do the clustering.
+    int32 num_removed = 0;
+    EventMap *tree_clustered = ClusterEventMapRestrictedByMap(*tree_split,
+                                                              stats,
+                                                              cluster_thresh,
+                                                              *tree_stub,
+                                                              &num_removed);
+    KALDI_LOG <<  "BuildTree: removed "<< num_removed << " leaves.";
+
+    int32 num_leaves_out = 0;
+    EventMap *tree_renumbered;
+    if (round_num_leaves) {
+      // Round the number of leaves to a multiple of 8 by clustering the leaves
+      // and merging them within each cluster.
+      int32 num_leaves_required = ((num_leaves - num_removed) / 8) * 8;
+      std::vector<EventMap*> leaf_mapping;
+
+      int32 num_removed_in_rounding = 0;
+      EventMap *tree_rounded = ClusterEventMapToNClustersRestrictedByMap(
+          *tree_clustered, stats, num_leaves_required, *tree_stub,
+          &num_removed_in_rounding);
+
+      if (num_removed_in_rounding > 0)
+        KALDI_LOG <<  "BuildTree: Rounded num leaves to multiple of 8 by"
+                  << " removing " << num_removed_in_rounding << " leaves.";
+
+      if (num_leaves - num_removed - num_removed_in_rounding !=
+          num_leaves_required) {
+        KALDI_WARN << "Did not get expected number of leaves: "
+                   << num_leaves << " - " << num_removed << " - "
+                   << num_removed_in_rounding
+                   << " != " << num_leaves_required;
+      }
+
+      tree_renumbered = RenumberEventMap(*tree_rounded, &num_leaves_out);
+
+      if (num_leaves_out != num_leaves_required) {
+        KALDI_WARN << "num-leaves-out != num-leaves-required: "
+                   << num_leaves_out << " != " << num_leaves_required;
+      }
+
+      delete tree_rounded;
+    } else {
+      tree_renumbered = RenumberEventMap(*tree_clustered, &num_leaves_out);
+    }
+
+    BaseFloat objf_after_cluster = ObjfGivenMap(stats, *tree_renumbered);
+
+    KALDI_VLOG(1) << "Objf change due to clustering "
+                  << ((objf_after_cluster-objf_before_cluster) / normalizer)
+                  << " per frame.";
+    KALDI_VLOG(1) << "Normalizing over only split phones, this is: "
+                  << ((objf_after_cluster-objf_before_cluster) / normalizer_filt)
+                  << " per frame.";
+    KALDI_VLOG(1) <<  "Num-leaves is now "<< num_leaves_out;
+
+    delete tree_clustered;
+    delete tree_split;
+    delete tree_stub;
+
+    // allocate the last leaf for blank.  (Easier code-wise than making it zero,
+    // because of the renumbering.
+    EventMap *blank_event_map = new ConstantEventMap(num_leaves_out++);
+    return new SplitEventMap(kPdfClass, blank_pdf_classes, blank_event_map,
+                             tree_renumbered);
+  } else {
+    if (round_num_leaves) {
+      // Round the number of leaves to a multiple of 8 by clustering the leaves
+      // and merging them within each cluster.
+      // The final number of leaves will be 'num_leaves_required'.
+      BaseFloat objf_before_cluster = ObjfGivenMap(stats, *tree_split);
+
+      // The +1 and -1 are to correct for the fast that we'll add another leaf
+      // for blank.
+      int32 num_leaves_required = ((num_leaves+1) / 8) * 8 - 1;
+      std::vector<EventMap*> leaf_mapping;
+
+      int32 num_removed_in_rounding = 0;
+      EventMap *tree_rounded = ClusterEventMapToNClustersRestrictedByMap(
+          *tree_split, stats, num_leaves_required, *tree_stub,
+          &num_removed_in_rounding);
+
+      if (num_removed_in_rounding > 0)
+        KALDI_LOG <<  "BuildTree: Rounded num leaves to multiple of 8 by"
+                  << " removing " << num_removed_in_rounding << " leaves.";
+
+      KALDI_ASSERT(num_removed_in_rounding < 8);
+
+      int32 num_leaves_out;
+      EventMap* tree_renumbered = RenumberEventMap(*tree_rounded, &num_leaves_out);
+
+      BaseFloat objf_after_cluster = ObjfGivenMap(stats, *tree_renumbered);
+
+      KALDI_VLOG(1) << "Objf change due to clustering "
+                    << ((objf_after_cluster-objf_before_cluster) / normalizer)
+                    << " per frame.";
+      KALDI_VLOG(1) << "Normalizing over only split phones, this is: "
+                    << ((objf_after_cluster-objf_before_cluster) / normalizer_filt)
+                    << " per frame.";
+      KALDI_VLOG(1) <<  "Num-leaves is now "<< num_leaves_out;
+
+      delete tree_stub;
+      delete tree_rounded;
+
+      // allocate the last leaf for blank.  (Easier code-wise than making it zero,
+      // because of the renumbering.
+      EventMap *blank_event_map = new ConstantEventMap(num_leaves_out++);
+      return new SplitEventMap(kPdfClass, blank_pdf_classes, blank_event_map,
+                               tree_renumbered);
+    }
+    delete tree_stub;
+    return tree_split;
+  }
+}
+
+
+
 // This function, called from BuildTreeTwoLevel, computes the mapping from the
 // leaves of the big tree to the leaves of the small tree.  It does this by
 // working out which stats correspond to which leaf of the big tree, then

@@ -46,6 +46,7 @@ int main(int argc, char *argv[]) {
     BaseFloat cluster_thresh = -1.0;  // negative means use smallest split in splitting phase as thresh.
     int32 max_leaves = 0;
     bool round_num_leaves = true;
+    int32 blank_pdf_class = -1;
     std::string occs_out_filename;
 
     ParseOptions po(usage);
@@ -62,9 +63,12 @@ int main(int argc, char *argv[]) {
                 "threshold for clustering after tree-building.  0 means "
                 "no clustering; -1 means use as a clustering threshold the "
                 "likelihood change of the final split.");
-    po.Register("round-num-leaves", &round_num_leaves, 
+    po.Register("round-num-leaves", &round_num_leaves,
                 "If true, then the number of leaves will be reduced to a "
                 "multiple of 8 by clustering.");
+    po.Register("blank-pdf-class", &blank_pdf_class,
+                "If >= 0, this pdf-class will be treated as 'blank', meaning "
+                "it is shared across all phones and not split.");
 
     po.Read(argc, argv);
 
@@ -102,7 +106,7 @@ int main(int argc, char *argv[]) {
       ReadBuildTreeStats(ki.Stream(), binary_in, gc, &stats);
     }
     KALDI_LOG << "Number of separate statistics is " << stats.size();
-    
+
     Questions qo;
     {
       bool binary_in;
@@ -122,17 +126,32 @@ int main(int argc, char *argv[]) {
 
     //////// Build the tree. ////////////
 
-    to_pdf = BuildTree(qo,
-                       phone_sets,
-                       phone2num_pdf_classes,
-                       is_shared_root,
-                       is_split_root,
-                       stats,
-                       thresh,
-                       max_leaves,
-                       cluster_thresh,
-                       P,
-                       round_num_leaves);
+    if (blank_pdf_class < 0) {
+      to_pdf = BuildTree(qo,
+                         phone_sets,
+                         phone2num_pdf_classes,
+                         is_shared_root,
+                         is_split_root,
+                         stats,
+                         thresh,
+                         max_leaves,
+                         cluster_thresh,
+                         P,
+                         round_num_leaves);
+    } else {
+      to_pdf = BuildTreeWithBlank(qo,
+                                  phone_sets,
+                                  phone2num_pdf_classes,
+                                  is_shared_root,
+                                  is_split_root,
+                                  stats,
+                                  thresh,
+                                  max_leaves,
+                                  cluster_thresh,
+                                  P,
+                                  blank_pdf_class,
+                                  round_num_leaves);
+    }
 
     { // This block is to warn about low counts.
       std::vector<BuildTreeStatsType> split_stats;
@@ -143,7 +162,7 @@ int main(int argc, char *argv[]) {
           KALDI_VLOG(1) << "For pdf-id " << i << ", low count "
                         << SumNormalizer(split_stats[i]);
     }
-    
+
     ContextDependency ctx_dep(N, P, to_pdf);  // takes ownership
     // of pointer "to_pdf", so set it NULL.
     to_pdf = NULL;
