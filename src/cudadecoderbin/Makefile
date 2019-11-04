@@ -7,7 +7,7 @@ ifeq ($(CUDA), true)
 LDFLAGS += $(CUDA_LDFLAGS)
 LDLIBS += $(CUDA_LDLIBS)
 
-BINFILES = batched-wav-nnet3-cuda
+BINFILES = batched-wav-nnet3-cuda batched-wav-nnet3-cuda-gpu-option-new
 
 OBJFILES =
 
